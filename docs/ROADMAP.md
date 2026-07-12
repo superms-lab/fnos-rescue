@@ -8,6 +8,17 @@
 - add generated Btrfs corruption fixtures;
 - automate persistent chunk-cache and selected-directory extraction jobs.
 
+Current P1 checkpoint: durable job state, resumable step tracking, JSONL progress, failure
+manifests, detached workers, cooperative pause/cancel controls, verification, and validated
+selected-path copy execution are implemented. Local, SMB/CIFS, and NFS destination identification
+plus capacity/write-readiness gates are also implemented; automated mount helpers and package
+installation remain. Linux dependency diagnostics and Debian/Ubuntu package construction are
+implemented and validated on Ubuntu 26.04, including package install/remove, dependency checks,
+read-only loop inspection, Btrfs superblock probing, and same-physical-disk rejection.
+Stage 1 Linux core now also includes durable root scanning, chunk-cache reuse, filesystem-tree
+listing, single and batch inode extraction, interruptible native jobs, QCOW2/NBD lifecycle cleanup,
+case reports, and read-only ext4/NTFS diagnostics.
+
 ## 0.2.x: guided recovery
 
 - resumable background jobs with JSONL progress;

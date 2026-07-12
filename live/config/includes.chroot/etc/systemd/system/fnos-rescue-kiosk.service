@@ -1,0 +1,17 @@
+[Unit]
+Description=FNOS Rescue kiosk browser
+After=live-config.service fnos-rescue-web.service
+Requires=fnos-rescue-web.service
+Conflicts=getty@tty1.service
+
+[Service]
+User=user
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+ExecStart=/usr/bin/xinit /usr/bin/openbox-session -- :0 vt1 -keeptty
+Restart=on-failure
+
+[Install]
+WantedBy=graphical.target

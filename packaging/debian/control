@@ -1,0 +1,10 @@
+Package: fnos-rescue
+Version: 0.1.0
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.11), util-linux, file, btrfs-progs, mdadm, qemu-utils, e2fsprogs, ntfs-3g
+Maintainer: FNOS Rescue contributors
+Description: Read-only-first FNOS Basic-disk Btrfs recovery toolkit
+ FNOS Rescue provides durable cases, safety guards, resumable jobs, validated
+ copying, and evidence collection for Linux-based recovery workflows.

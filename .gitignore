@@ -5,8 +5,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.env
 venv/
 dist/
+node_modules/
+web/dist/
 build/
 *.egg-info/
 cases/

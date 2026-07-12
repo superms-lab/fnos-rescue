@@ -9,13 +9,48 @@ Versioning.
 
 ### Added
 
-- Linux-first `fnos-rescue` and `rescuectl` commands.
-- Stable-serial device inspection and recursive read-only protection.
-- Source/destination separation checks and durable JSON recovery cases.
-- FNOS Btrfs superblock probing and read-only root scanning helpers.
-- QCOW2 historical-root and synthetic metadata helpers.
-- Sample hashing and file-type verification.
-- Bilingual documentation, Codex skill, CI, release automation, and security policy.
+- Durable recovery jobs with atomic state files, resumable completed-step tracking, JSONL
+  progress events, and append-only failure manifests.
+- `job-create`, `job-list`, and `job-show` CLI commands.
+- Foreground and detached-background `verify` job execution with idempotent resume, worker PID,
+  logs, and atomic result files via `job-run`.
+- Cooperative pause, resume, and cancel requests via `job-control`.
+- Resumable selected-path copy jobs with traversal protection, preserved directory layout, and
+  source/destination SHA-256 validation.
+- Linux destination inspection for local, SMB/CIFS, and NFS mounts, including read-only,
+  writability, and required-capacity gates enforced by copy jobs.
+- `doctor` platform and dependency diagnostics for the Linux recovery runtime.
+- Debian/Ubuntu package builder and CI/release validation for `.deb` artifacts.
+- Durable read-only Btrfs superblock-probe and historical-root-scan jobs with private evidence
+  artifacts, FSID validation, optional scan ranges, and background execution support.
+- Durable private-Btrfs jobs for reusable chunk-cache generation, historical filesystem-tree
+  inventory, and validated single-inode extraction into isolated case artifacts.
+- Safe batch inode extraction, interruptible native processes, case-level validation reports,
+  QCOW2/NBD lifecycle and cleanup jobs, plus read-only ext4 and NTFS diagnostics.
+- Native fnOS environment detection, dry-run service quiesce planning, architecture-labelled
+  application archives, upgrade rollback, clean uninstall, and a fixed-command root helper.
+- Shared local React recovery console with responsive desktop/mobile layouts.
+- Guided case creation, destination validation, allowlisted background jobs, and job controls.
+- Debian Live ISO profile and CI artifact pipeline, plus Windows/macOS recovery entrypoint guides.
+- CycloneDX SBOM, SHA-256 release manifests, npm audit, secret scanning, and release preflight.
 
-[Unreleased]: https://github.com/supermslab/fnos-rescue/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/supermslab/fnos-rescue/releases/tag/v0.1.0
+### Security
+
+- Require physical source-device checks before copy jobs and reject same-disk destinations.
+- Reject path traversal and source/destination symlinks in both copy implementations.
+- Add per-job worker locks, strict job ID validation, private case permissions, atomic destination
+  replacement, source-change detection, and retryable per-file failures.
+- Require a random per-process session token on every Web mutation and apply CSP, anti-framing,
+  no-referrer, and content-type security headers to API and static responses.
+
+### Validation
+
+- Validated on Ubuntu 26.04 with a disposable read-only Btrfs loop image, physical same-disk
+  rejection, dependency diagnostics, and full `.deb` install/run/remove lifecycle.
+- Validated the native archive on Debian 12-based fnOS x86_64 with install, detection, dependency
+  checks, helper allow/deny behavior, uninstall, service-state preservation, and no residue.
+- Validated 54 automated tests, the Web production build, zero known npm vulnerabilities,
+  sensitive-data scanning, package construction, and release metadata generation.
+
+[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/superms-lab/fnos-rescue/releases/tag/v0.1.0

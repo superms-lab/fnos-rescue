@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import stat
 from pathlib import Path
 
 from fnos_rescue.cases import RecoveryCase
@@ -29,6 +30,8 @@ class RecoveryCaseTests(unittest.TestCase):
             self.assertEqual(loaded.source["serial"], "SAFE-SERIAL")
             self.assertEqual(loaded.filesystem, "btrfs")
             self.assertEqual(json.loads(path.read_text())["schema_version"], 1)
+            self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":

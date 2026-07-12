@@ -38,11 +38,20 @@ class RecoveryCase:
 
     def save(self, directory: str | Path) -> Path:
         root = Path(directory)
-        root.mkdir(parents=True, exist_ok=False)
-        for name in ("superblocks", "scans", "mappings", "inventories", "validation", "logs"):
-            (root / name).mkdir()
+        root.mkdir(parents=True, exist_ok=False, mode=0o700)
+        for name in (
+            "superblocks",
+            "scans",
+            "mappings",
+            "inventories",
+            "validation",
+            "logs",
+            "jobs",
+        ):
+            (root / name).mkdir(mode=0o700)
         target = root / "case.json"
         target.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n")
+        target.chmod(0o600)
         return target
 
     @classmethod

@@ -17,3 +17,6 @@ explicit migration or a clear compatibility error.
 4. Commit the release, tag it as `vMAJOR.MINOR.PATCH`, and push the tag.
 5. GitHub Actions builds wheel and source archives and creates or updates the GitHub Release.
 6. Never publish raw cases, images, caches, or unredacted logs in a release.
+
+Run `ALLOW_DIRTY=1 ./scripts/release-preflight.sh` while preparing a release, then run it again
+without `ALLOW_DIRTY` after the release commit. The clean-worktree run is the actual release gate.

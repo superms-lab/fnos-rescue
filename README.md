@@ -2,8 +2,8 @@
 
 > Read-only-first recovery toolkit for FNOS Basic-disk Btrfs volumes.
 
-[![CI](https://github.com/supermslab/fnos-rescue/actions/workflows/ci.yml/badge.svg)](https://github.com/supermslab/fnos-rescue/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/supermslab/fnos-rescue?include_prereleases)](https://github.com/supermslab/fnos-rescue/releases)
+[![CI](https://github.com/superms-lab/fnos-rescue/actions/workflows/ci.yml/badge.svg)](https://github.com/superms-lab/fnos-rescue/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/superms-lab/fnos-rescue?include_prereleases)](https://github.com/superms-lab/fnos-rescue/releases)
 
 [中文说明](README.zh-CN.md)
 
@@ -51,6 +51,22 @@ fnos-rescue --version
 Raw block-device operations require Linux and native tools such as `lsblk`, `blockdev`, `mdadm`,
 `btrfs-progs`, `qemu-img`, and `qemu-nbd`.
 
+## Native fnOS package
+
+Build the architecture-labelled fnOS archive with `./scripts/build-fnos-package.sh`. It installs
+under `/var/apps/fnos-rescue`, supports upgrade rollback and clean uninstall, and includes a
+fixed-command root helper that refuses arbitrary shell execution. `fnos-quiesce-plan` is dry-run
+only and never stops active fnOS services by itself.
+
+Check the complete runtime before touching a device:
+
+```bash
+fnos-rescue doctor
+```
+
+On Debian/Ubuntu, build the native package with `./scripts/build-deb.sh`. The resulting `.deb`
+declares `util-linux`, `file`, `btrfs-progs`, `mdadm`, and `qemu-utils` as system dependencies.
+
 ## Safe first commands
 
 ```bash
@@ -62,6 +78,71 @@ sudo fnos-rescue protect /dev/nvme0n1 \
 sudo fnos-rescue btrfs-probe /dev/loop16
 fnos-rescue verify /mnt/recovery --limit 10
 ```
+
+Durable jobs keep resumable state, JSONL progress, and append-only failure manifests inside a
+recovery case:
+
+```bash
+fnos-rescue job-create ./case-001 copy --parameters \
+  '{"source_device":"/dev/sda","source_root":"/mnt/recovery-view","destination":"/mnt/recovery","paths":["Photos/2025"]}'
+fnos-rescue job-list ./case-001
+fnos-rescue job-show ./case-001 job-0123456789ab
+fnos-rescue job-run ./case-001 job-0123456789ab --background
+fnos-rescue job-control ./case-001 job-0123456789ab pause
+fnos-rescue job-control ./case-001 job-0123456789ab resume
+```
+
+The `verify` executor is available during P1. Creating a job records intent; `job-run` is the
+explicit action that starts or resumes supported work. Background workers write `worker.pid`,
+`worker.log`, `progress.jsonl`, and atomic result state inside the job directory.
+
+Validated directory copying uses an explicit source root, destination, and relative path list:
+
+```bash
+fnos-rescue job-create ./case-001 copy --parameters \
+  '{"source_device":"/dev/sda","source_root":"/mnt/recovery-view","destination":"/mnt/output","paths":["Photos/2025"]}'
+```
+
+The copy executor requires the original physical `source_device`, rejects same-disk destinations,
+absolute selections, path traversal, and symlinks, preserves relative paths, and compares
+source/destination SHA-256 before marking each file complete.
+
+On Linux, inspect a mounted local disk, SMB/CIFS share, or NFS export before creating a copy job:
+
+```bash
+fnos-rescue destination-inspect /mnt/output --required-bytes 10737418240
+```
+
+The command reports the backing source, mountpoint, filesystem class, read-only state, write
+readiness, and available capacity. Copy jobs run the same check automatically before writing.
+
+Btrfs evidence collection can also run as durable jobs:
+
+```bash
+fnos-rescue job-create ./case-001 btrfs-probe \
+  --parameters '{"device":"/dev/loop16"}'
+fnos-rescue job-create ./case-001 btrfs-root-scan --parameters \
+  '{"device":"/dev/loop16","scanner":"/opt/fnos-rescue/scan_btrfs_roots","fsid":"11111111-2222-3333-4444-555555555555"}'
+fnos-rescue job-run ./case-001 job-0123456789ab --background
+```
+
+Both jobs require a Linux block device that is already read-only. They collect evidence only and
+never mount, repair, or rewrite a superblock.
+
+The private Btrfs v7 helper can persist a reusable chunk cache, list a historical filesystem tree,
+and extract one known inode into the private job directory:
+
+```bash
+fnos-rescue job-create ./case-001 btrfs-chunk-cache --parameters \
+  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs"}'
+fnos-rescue job-create ./case-001 btrfs-list --parameters \
+  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
+fnos-rescue job-create ./case-001 btrfs-extract-inode --parameters \
+  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
+```
+
+Extraction first lands inside the private case job directory. Moving validated content to a final
+destination remains a separate `copy` job so physical same-disk checks cannot be bypassed.
 
 Read [the FNOS Btrfs runbook](docs/FNOS-BTRFS.md) before attempting recovery.
 

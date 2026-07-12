@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+chmod 0755 /opt/fnos-rescue/scripts/live-session.sh
+ln -sf /opt/fnos-rescue/scripts/live-session.sh /usr/local/bin/fnos-rescue-session
+systemctl enable fnos-rescue-web.service
+systemctl enable fnos-rescue-kiosk.service
+cat >/etc/sudoers.d/fnos-rescue <<'EOF'
+user ALL=(root) NOPASSWD: /usr/local/bin/fnos-rescue-session
+EOF
+chmod 0440 /etc/sudoers.d/fnos-rescue

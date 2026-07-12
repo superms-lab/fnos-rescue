@@ -8,6 +8,26 @@ import csv
 import hashlib
 import os
 import time
+from pathlib import Path
+
+
+def safe_path(root: str, relative_path: str) -> Path:
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"path must stay inside root: {relative_path}")
+    root_input = Path(root).absolute()
+    if root_input.is_symlink():
+        raise ValueError(f"root symlink is not allowed: {root_input}")
+    root_path = root_input.resolve()
+    current = root_path
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"symlink is not allowed in recovery path: {current}")
+    resolved = current.resolve()
+    if resolved != root_path and root_path not in resolved.parents:
+        raise ValueError(f"path escapes root: {relative_path}")
+    return resolved
 
 
 def main() -> int:
@@ -39,8 +59,12 @@ def main() -> int:
     buffer_size = args.buffer_mib * 1024 * 1024
 
     for index, (expected_size, relative_path) in enumerate(candidates, 1):
-        source = os.path.join(args.source_root, relative_path)
-        destination = os.path.join(args.destination_root, relative_path)
+        try:
+            source = str(safe_path(args.source_root, relative_path))
+            destination = str(safe_path(args.destination_root, relative_path))
+        except ValueError as error:
+            failures.append((expected_size, relative_path, str(error)))
+            continue
         temporary = destination + ".codex-recover-tmp"
         digest = hashlib.sha256()
         copied = 0

@@ -11,6 +11,23 @@ import shutil
 import subprocess
 import tempfile
 import time
+from pathlib import Path
+
+
+def safe_destination(root: str, relative_path: str) -> str:
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"destination path must stay inside root: {relative_path}")
+    root_input = Path(root).absolute()
+    if root_input.is_symlink():
+        raise ValueError(f"destination root symlink is not allowed: {root_input}")
+    root_path = root_input.resolve()
+    current = root_path
+    for part in relative.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"destination symlink is not allowed: {current}")
+    return str(current)
 
 
 def main() -> int:
@@ -113,7 +130,12 @@ def main() -> int:
                 continue
 
             root, extracted = recovered
-            destination = os.path.join(args.destination_root, relative_path)
+            try:
+                destination = safe_destination(args.destination_root, relative_path)
+            except ValueError as error:
+                failures.append((expected_size, inode, relative_path, str(error)))
+                os.unlink(extracted)
+                continue
             temporary = destination + ".historical-root-tmp"
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             digest = hashlib.sha256()

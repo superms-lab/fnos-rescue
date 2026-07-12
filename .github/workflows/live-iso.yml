@@ -1,0 +1,45 @@
+name: Live ISO
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y live-build
+      - run: ./scripts/build-live-iso.sh
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: fnos-rescue-live-amd64
+          path: |
+            dist/fnos-rescue-live-amd64.iso
+            dist/fnos-rescue-live-amd64.iso.sha256
+          if-no-files-found: error
+      - name: Attach ISO to tagged prerelease
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+              gh release upload "${GITHUB_REF_NAME}" \
+                dist/fnos-rescue-live-amd64.iso \
+                dist/fnos-rescue-live-amd64.iso.sha256 --clobber
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "release was not created by the package workflow" >&2
+          exit 1
