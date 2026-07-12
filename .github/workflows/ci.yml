@@ -67,6 +67,9 @@ jobs:
           sudo env FNOS_RESCUE_DISPOSABLE_TEST=1 \
             ./scripts/test-fnos-package-lifecycle.sh "$package"
       - if: matrix.python-version == '3.11'
+        name: Run clean release preflight
+        run: ./scripts/release-preflight.sh
+      - if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: fnos-rescue-fnos-package

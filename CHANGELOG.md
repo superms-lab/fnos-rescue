@@ -39,6 +39,8 @@ Versioning.
 
 - Passed 64 automated tests on Python 3.11, 3.12, and 3.13, the Web production build, npm audit,
   secret scanning, recovery-tool compilation, Debian/fnOS packaging, and artifact verification.
+- Exercised fnOS archive installation, loopback-only Web health, systemd sandbox properties,
+  helper allow/deny behavior, upgrade rollback, and final uninstall on a disposable systemd runner.
 - Booted the generated Live ISO in headless QEMU using both legacy BIOS and UEFI and required the
   Web service, kiosk, root scanner, and private Btrfs helper to report ready in each mode.
 
