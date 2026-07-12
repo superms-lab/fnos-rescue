@@ -23,6 +23,8 @@ trap cleanup EXIT INT TERM
 
 install -d -m 0755 "$APP" "$APP/lib/python3/dist-packages" "$APP/bin"
 cp -R "$SOURCE/app/fnos_rescue" "$APP/lib/python3/dist-packages/fnos_rescue"
+install -m 0755 "$SOURCE/app/bin/scan_btrfs_roots" "$APP/bin/scan_btrfs_roots"
+install -m 0755 "$SOURCE/app/bin/fnos-rescue-btrfs" "$APP/bin/fnos-rescue-btrfs"
 install -m 0755 "$SOURCE/fnos-rescue-helper" "$APP/bin/fnos-rescue-helper"
 cat > "$APP/bin/fnos-rescue" <<'EOF'
 #!/bin/sh

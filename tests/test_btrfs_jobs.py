@@ -37,7 +37,7 @@ class BtrfsJobTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             store = self.make_store(root)
-            scanner = root / "scanner"
+            scanner = root / "scan_btrfs_roots"
             scanner.write_text("#!/bin/sh\n")
             scanner.chmod(0o700)
             parameters = {
@@ -49,24 +49,25 @@ class BtrfsJobTests(unittest.TestCase):
             }
             job = store.create("btrfs-root-scan", parameters)
             result = CommandResult((str(scanner), "/dev/test"), 0, "ROOT 123\n", "")
-            with patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (root,)), patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
                 "fnos_rescue.btrfs_jobs.assert_read_only"
             ), patch("fnos_rescue.btrfs_jobs.run", return_value=result):
                 completed = execute_btrfs_root_scan(store, job)
             self.assertEqual(completed.status, "completed")
             self.assertEqual((store.root / job.job_id / "root-scan.log").read_text(), "ROOT 123\n")
-            self.assertEqual(_scan_argv(parameters, Path("/dev/test"))[-2:], ["1", "2"])
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (root,)):
+                self.assertEqual(_scan_argv(parameters, Path("/dev/test"))[-2:], ["1", "2"])
 
     def test_root_scan_rejects_invalid_fsid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            scanner = Path(temporary) / "scanner"
+            scanner = Path(temporary) / "scan_btrfs_roots"
             scanner.write_text("x")
             scanner.chmod(0o700)
-            with self.assertRaises(Exception):
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (Path(temporary),)), self.assertRaises(Exception):
                 _scan_argv({"scanner": str(scanner), "fsid": "not-an-fsid"}, Path("/dev/test"))
 
     def private_tool(self, root: Path) -> Path:
-        tool = root / "btrfs"
+        tool = root / "fnos-rescue-btrfs"
         tool.write_text("#!/bin/sh\n")
         tool.chmod(0o700)
         return tool
@@ -81,7 +82,7 @@ class BtrfsJobTests(unittest.TestCase):
             def fake_run(*_args, **kwargs):
                 Path(kwargs["env"]["BTRFS_CHUNK_CACHE_SAVE"]).write_text("chunk\n")
                 return CommandResult(("btrfs",), 0, "Saved 1 chunk mappings\n", "")
-            with patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (root,)), patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
                 "fnos_rescue.btrfs_jobs.assert_read_only"
             ), patch("fnos_rescue.btrfs_jobs.run", side_effect=fake_run):
                 completed = execute_btrfs_chunk_cache(store, job)
@@ -109,7 +110,7 @@ class BtrfsJobTests(unittest.TestCase):
                 if "BTRFS_EXTRACT_PATH" in env:
                     Path(env["BTRFS_EXTRACT_PATH"]).write_bytes(b"data")
                 return CommandResult(("btrfs",), 0, "ok\n", "")
-            with patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (root,)), patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
                 "fnos_rescue.btrfs_jobs.assert_read_only"
             ), patch("fnos_rescue.btrfs_jobs.run", side_effect=fake_run):
                 self.assertEqual(execute_btrfs_list(store, list_job).status, "completed")
@@ -132,7 +133,7 @@ class BtrfsJobTests(unittest.TestCase):
             def fake_run(*_args, **kwargs):
                 Path(kwargs["env"]["BTRFS_EXTRACT_PATH"]).write_bytes(b"data")
                 return CommandResult(("btrfs",), 0, "", "")
-            with patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
+            with patch("fnos_rescue.btrfs_jobs.TRUSTED_TOOL_ROOTS", (root,)), patch("fnos_rescue.btrfs_jobs.require_block_device", return_value=Path("/dev/test")), patch(
                 "fnos_rescue.btrfs_jobs.assert_read_only"
             ), patch("fnos_rescue.btrfs_jobs.run_interruptible", side_effect=fake_run):
                 completed = execute_btrfs_extract_batch(store, job)

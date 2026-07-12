@@ -6,6 +6,7 @@ command -v lb >/dev/null || { echo "ERROR: install live-build first" >&2; exit 2
 test "$(uname -s)" = Linux || { echo "ERROR: ISO builds require Debian/Ubuntu Linux" >&2; exit 2; }
 "$ROOT/scripts/validate-live-profile.sh"
 (cd "$ROOT/web" && npm ci && npm run build)
+"$ROOT/scripts/build-recovery-tools.sh"
 
 WORK="$ROOT/build/live"
 rm -rf "$WORK"
@@ -13,6 +14,11 @@ mkdir -p "$WORK/config" "$ROOT/dist"
 cp -R "$ROOT/live/config/." "$WORK/config/"
 mkdir -p "$WORK/config/includes.chroot/opt/fnos-rescue"
 cp -R "$ROOT/src" "$ROOT/web" "$ROOT/scripts" "$WORK/config/includes.chroot/opt/fnos-rescue/"
+mkdir -p "$WORK/config/includes.chroot/opt/fnos-rescue/bin"
+install -m 0755 "$ROOT/build/recovery-tools/bin/scan_btrfs_roots" \
+  "$WORK/config/includes.chroot/opt/fnos-rescue/bin/scan_btrfs_roots"
+install -m 0755 "$ROOT/build/recovery-tools/bin/fnos-rescue-btrfs" \
+  "$WORK/config/includes.chroot/opt/fnos-rescue/bin/fnos-rescue-btrfs"
 rm -rf "$WORK/config/includes.chroot/opt/fnos-rescue/web/node_modules"
 
 cd "$WORK"

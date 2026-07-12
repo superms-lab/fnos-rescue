@@ -15,6 +15,25 @@ from .verify import sha256_file
 
 
 FSID = re.compile(r"^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})$")
+TRUSTED_TOOL_ROOTS = (
+    Path("/usr/lib/fnos-rescue/bin"),
+    Path("/var/apps/fnos-rescue/bin"),
+    Path("/opt/fnos-rescue/bin"),
+)
+
+
+def _trusted_tool(parameters: dict[str, Any], parameter: str, filename: str) -> Path:
+    supplied = str(parameters.get(parameter, "")).strip()
+    candidates = [Path(supplied)] if supplied else [root / filename for root in TRUSTED_TOOL_ROOTS]
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if not resolved.is_file() or not resolved.stat().st_mode & 0o111:
+            continue
+        if any(resolved == (root / filename).resolve() for root in TRUSTED_TOOL_ROOTS):
+            return resolved
+    if supplied:
+        raise RescueError(f"{parameter} must be the packaged trusted tool: {filename}")
+    raise RescueError(f"packaged recovery tool is missing: {filename}")
 
 
 def _job_directory(store: JobStore, job: RecoveryJob) -> Path:
@@ -40,9 +59,7 @@ def execute_btrfs_probe(store: JobStore, job: RecoveryJob) -> RecoveryJob:
 
 
 def _scan_argv(parameters: dict[str, Any], device: Path) -> list[str]:
-    scanner = Path(str(parameters.get("scanner", ""))).expanduser().resolve()
-    if not scanner.is_file() or not scanner.stat().st_mode & 0o111:
-        raise RescueError(f"root scanner is not executable: {scanner}")
+    scanner = _trusted_tool(parameters, "scanner", "scan_btrfs_roots")
     fsid = str(parameters.get("fsid", "")).strip()
     if not FSID.fullmatch(fsid):
         raise RescueError("root scan requires a valid Btrfs FSID")
@@ -92,10 +109,7 @@ def execute_btrfs_root_scan(store: JobStore, job: RecoveryJob) -> RecoveryJob:
 
 
 def _private_btrfs(parameters: dict[str, Any]) -> Path:
-    tool = Path(str(parameters.get("private_btrfs", ""))).expanduser().resolve()
-    if not tool.is_file() or not tool.stat().st_mode & 0o111:
-        raise RescueError(f"private btrfs tool is not executable: {tool}")
-    return tool
+    return _trusted_tool(parameters, "private_btrfs", "fnos-rescue-btrfs")
 
 
 def _readonly_device(parameters: dict[str, Any]) -> Path:
