@@ -17,10 +17,13 @@ rm -rf "$WORK/config/includes.chroot/opt/fnos-rescue/web/node_modules"
 
 cd "$WORK"
 lb config noauto \
+  --ignore-system-defaults \
+  --mode debian \
   --distribution bookworm \
   --architectures amd64 \
   --binary-images iso-hybrid \
   --archive-areas "main contrib non-free-firmware" \
+  --keyring-packages "debian-archive-keyring" \
   --mirror-bootstrap "https://deb.debian.org/debian" \
   --mirror-chroot "https://deb.debian.org/debian" \
   --mirror-chroot-security "https://security.debian.org/debian-security" \

@@ -23,6 +23,9 @@ class LiveProfileTests(unittest.TestCase):
 
     def test_live_builder_pins_debian_mirrors(self):
         builder = (ROOT / "scripts/build-live-iso.sh").read_text()
+        self.assertIn("--ignore-system-defaults", builder)
+        self.assertIn("--mode debian", builder)
+        self.assertIn('--keyring-packages "debian-archive-keyring"', builder)
         self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
         self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
 
