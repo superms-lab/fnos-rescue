@@ -19,6 +19,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring
+      - name: Install pinned Debian Live Build
+        run: |
+          git clone https://salsa.debian.org/live-team/live-build.git /tmp/live-build
+          git -C /tmp/live-build checkout 37c453337996a3f9cbf80697e2321d8162369776
+          sudo make -C /tmp/live-build install
+          /usr/local/bin/lb --version
       - run: ./scripts/build-live-iso.sh
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
