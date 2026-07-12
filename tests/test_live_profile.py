@@ -21,6 +21,11 @@ class LiveProfileTests(unittest.TestCase):
         for forbidden in ("wsl.exe --mount", "initialize-disk", "format-volume", "set-disk"):
             self.assertNotIn(forbidden, helper)
 
+    def test_live_builder_pins_debian_mirrors(self):
+        builder = (ROOT / "scripts/build-live-iso.sh").read_text()
+        self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
+        self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
+
 
 if __name__ == "__main__":
     unittest.main()

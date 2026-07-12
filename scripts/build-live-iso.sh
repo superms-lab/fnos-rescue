@@ -21,6 +21,11 @@ lb config noauto \
   --architectures amd64 \
   --binary-images iso-hybrid \
   --archive-areas "main contrib non-free-firmware" \
+  --mirror-bootstrap "https://deb.debian.org/debian" \
+  --mirror-chroot "https://deb.debian.org/debian" \
+  --mirror-chroot-security "https://security.debian.org/debian-security" \
+  --mirror-binary "https://deb.debian.org/debian" \
+  --mirror-binary-security "https://security.debian.org/debian-security" \
   --bootappend-live "boot=live components hostname=fnos-rescue username=user"
 sudo lb build
 ISO=$(find . -maxdepth 1 -name 'live-image-*.hybrid.iso' -print -quit)

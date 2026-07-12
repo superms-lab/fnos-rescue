@@ -5,6 +5,10 @@ Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pin Debian mirrors explicitly when building a Bookworm Live image on Ubuntu CI runners.
+
 ## [0.1.0] - 2026-07-12
 
 ### Added

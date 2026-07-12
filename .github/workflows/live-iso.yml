@@ -18,7 +18,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y live-build
+      - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring
       - run: ./scripts/build-live-iso.sh
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
