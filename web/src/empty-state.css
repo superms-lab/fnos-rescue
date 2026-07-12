@@ -1,0 +1,10 @@
+.devices .empty-state {
+  padding: 28px 12px;
+  color: #78858a;
+  text-align: center;
+  white-space: normal;
+}
+
+.devices tbody tr:has(.empty-state) {
+  cursor: default;
+}

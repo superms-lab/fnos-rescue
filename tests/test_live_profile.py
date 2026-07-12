@@ -48,6 +48,13 @@ class LiveProfileTests(unittest.TestCase):
         builder = (ROOT / "scripts/build-recovery-tools.sh").read_text()
         self.assertIn("--disable-convert", builder)
 
+    def test_web_source_contains_no_demo_devices(self):
+        source = (ROOT / "web/src/main.jsx").read_text()
+        for forbidden in ("fallbackDevices", "DEMO-", "Sample destination", "安全演示模式"):
+            self.assertNotIn(forbidden, source)
+        self.assertIn("未发现可操作的真实块设备", source)
+        self.assertIn("本机服务未连接", source)
+
 
 if __name__ == "__main__":
     unittest.main()
