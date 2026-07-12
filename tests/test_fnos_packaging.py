@@ -8,6 +8,15 @@ from pathlib import Path
 
 
 class FnosPackagingTests(unittest.TestCase):
+    def test_web_service_is_loopback_only_and_sandboxed(self) -> None:
+        service = Path("packaging/fnos/fnos-rescue-web.service").read_text()
+        self.assertIn("--host 127.0.0.1", service)
+        self.assertIn("ProtectSystem=strict", service)
+        self.assertIn("ReadWritePaths=/var/lib/fnos-rescue", service)
+        installer = Path("packaging/fnos/install.sh").read_text()
+        self.assertIn("systemctl is-active --quiet", installer)
+        self.assertIn("install -d -m 0700 /var/lib/fnos-rescue", installer)
+
     def test_builds_native_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             tools = Path(temporary)
@@ -24,6 +33,7 @@ class FnosPackagingTests(unittest.TestCase):
                 manifest = json.load(bundle.extractfile(manifest_name))
                 self.assertTrue(any(name.endswith("/app/bin/scan_btrfs_roots") for name in names))
                 self.assertTrue(any(name.endswith("/app/bin/fnos-rescue-btrfs") for name in names))
+                self.assertTrue(any(name.endswith("/fnos-rescue-web.service") for name in names))
                 self.assertFalse(any("/__pycache__/" in name for name in names))
             self.assertEqual(manifest["name"], "FNOS Rescue")
             self.assertEqual(manifest["os"], "fnOS")

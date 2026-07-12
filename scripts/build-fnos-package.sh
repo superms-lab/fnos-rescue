@@ -24,6 +24,7 @@ fi
 install -m 0755 "$ROOT/packaging/fnos/install.sh" "$STAGE/install.sh"
 install -m 0755 "$ROOT/packaging/fnos/uninstall.sh" "$STAGE/uninstall.sh"
 install -m 0755 "$ROOT/packaging/fnos/fnos-rescue-helper" "$STAGE/fnos-rescue-helper"
+install -m 0644 "$ROOT/packaging/fnos/fnos-rescue-web.service" "$STAGE/fnos-rescue-web.service"
 printf '{"name":"FNOS Rescue","version":"%s","architecture":"%s","os":"fnOS"}\n' \
   "$VERSION" "$ARCH" > "$STAGE/manifest.json"
 tar -C "$(dirname "$STAGE")" -czf "$OUTPUT" "$(basename "$STAGE")"

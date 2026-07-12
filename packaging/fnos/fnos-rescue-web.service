@@ -1,0 +1,20 @@
+[Unit]
+Description=FNOS Rescue local Web console
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Environment=HOME=/var/lib/fnos-rescue
+Environment=PYTHONPATH=/var/apps/fnos-rescue/lib/python3/dist-packages
+ExecStart=/usr/bin/python3 -m fnos_rescue serve --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/fnos-rescue /run /tmp
+
+[Install]
+WantedBy=multi-user.target
