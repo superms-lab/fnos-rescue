@@ -5,9 +5,42 @@ Versioning.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-13
+
+### Added
+
+- Package the advanced read-only Btrfs root scanner and private historical-tree helper in Debian,
+  fnOS, Live ISO, and release artifacts using fixed trusted paths.
+- Complete the guided Web recovery flow for cases, device protection, destination validation,
+  allowlisted Btrfs jobs, progress control, and recovery reports.
+- Add a loopback-only, systemd-sandboxed fnOS Web service with install, upgrade rollback, and
+  uninstall lifecycle support.
+- Add Windows, macOS, Debian/Ubuntu, fnOS, and Live ISO entrypoints plus BIOS/UEFI boot diagnostics.
+
 ### Fixed
 
 - Pin Debian mirrors explicitly when building a Bookworm Live image on Ubuntu CI runners.
+- Remove all hard-coded Web demo devices and show explicit empty/error states when no real local
+  service or block device is available.
+- Replace the broken BIOS COM32 menu dependency with a deterministic ISOLINUX entry and reject
+  unresolved bootloader placeholders in release CI.
+- Load split OVMF CODE and VARS images through pflash for reproducible UEFI validation.
+- Clean release build directories and Python bytecode before packaging so stale assets and
+  `__pycache__` files cannot leak into archives.
+
+### Security
+
+- Restrict the fnOS root helper to fixed diagnostic/read-only operations and reject shell,
+  interpreter, arbitrary job, and caller-supplied executable paths.
+- Keep the Web service bound to `127.0.0.1`, require mutation session tokens, validate trusted
+  recovery-tool paths, and preserve source/destination and symlink escape protections.
+
+### Validation
+
+- Passed 64 automated tests on Python 3.11, 3.12, and 3.13, the Web production build, npm audit,
+  secret scanning, recovery-tool compilation, Debian/fnOS packaging, and artifact verification.
+- Booted the generated Live ISO in headless QEMU using both legacy BIOS and UEFI and required the
+  Web service, kiosk, root scanner, and private Btrfs helper to report ready in each mode.
 
 ## [0.1.0] - 2026-07-12
 
@@ -56,5 +89,6 @@ Versioning.
 - Validated 54 automated tests, the Web production build, zero known npm vulnerabilities,
   sensitive-data scanning, package construction, and release metadata generation.
 
-[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/superms-lab/fnos-rescue/releases/tag/v0.1.0

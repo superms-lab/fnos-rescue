@@ -14,7 +14,7 @@ an auditable, repeatable workflow instead of a collection of dangerous one-off c
 
 ## Current status
 
-`v0.1.0` is an alpha, Linux-first foundation extracted from successful real-world FNOS Basic-disk
+`v0.1.1` is an alpha, Linux-first prerelease extracted from successful real-world FNOS Basic-disk
 Btrfs recoveries. It provides:
 
 - device inspection with stable serial reporting;
@@ -25,6 +25,8 @@ Btrfs recoveries. It provides:
 - fast read-only Btrfs root scanning helpers;
 - QCOW2-only historical-root and synthetic-metadata helpers;
 - representative file hashing and type validation;
+- a loopback-only guided Web recovery console and sandboxed fnOS service;
+- a BIOS/UEFI-validated Debian Live ISO for Windows, macOS, Linux, and NAS hosts;
 - a Codex recovery skill and detailed safety runbook.
 
 This is not yet a one-click recovery application. Low-level recovery can destroy the only copy of
