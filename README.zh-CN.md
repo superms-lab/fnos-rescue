@@ -58,7 +58,8 @@ sudo ./fnos-rescue_0.1.0_x86_64/install.sh
 ```
 
 原生安装位置为 `/var/apps/fnos-rescue`。`fnos-quiesce-plan` 默认只输出服务和挂载计划，
-不会自动停止飞牛服务；底层 helper 只允许固定恢复命令。
+不会自动停止飞牛服务；底层 helper 只允许固定诊断与只读保护命令，拒绝任务执行、shell
+和解释器。需要 root 的后台任务必须由受控服务或管理员明确启动。
 
 接触块设备前先检查完整运行环境：
 
