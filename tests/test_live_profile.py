@@ -29,6 +29,8 @@ class LiveProfileTests(unittest.TestCase):
         self.assertIn("--security false", builder)
         security = (ROOT / "live/config/archives/debian-security.list.chroot").read_text()
         self.assertIn("bookworm-security", security)
+        self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
+        self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
 
     def test_ci_pins_debian_live_build_source(self):
         workflow = (ROOT / ".github/workflows/live-iso.yml").read_text()
@@ -38,13 +40,6 @@ class LiveProfileTests(unittest.TestCase):
     def test_private_btrfs_build_disables_unneeded_convert(self):
         builder = (ROOT / "scripts/build-recovery-tools.sh").read_text()
         self.assertIn("--disable-convert", builder)
-        self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
-        self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
-
-    def test_ci_pins_debian_live_build_source(self):
-        workflow = (ROOT / ".github/workflows/live-iso.yml").read_text()
-        self.assertIn("salsa.debian.org/live-team/live-build.git", workflow)
-        self.assertIn("37c453337996a3f9cbf80697e2321d8162369776", workflow)
 
 
 if __name__ == "__main__":
