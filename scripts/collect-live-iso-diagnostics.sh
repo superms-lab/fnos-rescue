@@ -42,5 +42,16 @@ done < <(
     -print | sort
 )
 
+if grep -R -n -E '@(KERNEL|LINUX|INITRD|APPEND_LIVE|LB_BOOTAPPEND)' "$OUT/iso-tree/isolinux" >"$OUT/isolinux-placeholders.txt"; then
+  cat "$OUT/isolinux-placeholders.txt" >&2
+  echo "ERROR: unresolved live-build placeholders remain in BIOS boot configuration" >&2
+  exit 1
+fi
+if grep -q 'vesamenu\.c32' "$OUT/iso-tree/isolinux/isolinux.cfg" \
+  && ! test -f "$OUT/iso-tree/isolinux/vesamenu.c32"; then
+  echo "ERROR: BIOS configuration references missing vesamenu.c32" >&2
+  exit 1
+fi
+
 cat "$OUT/summary.txt"
 cat "$OUT/boot-configs.txt"

@@ -65,7 +65,15 @@ if ! boot_and_check bios; then
 fi
 OVMF=$(find /usr/share/OVMF /usr/share/ovmf -type f \( -name 'OVMF_CODE.fd' -o -name 'OVMF_CODE_4M.fd' \) 2>/dev/null | head -1)
 test -n "$OVMF" || { echo "ERROR: OVMF firmware is required" >&2; exit 2; }
-if ! boot_and_check uefi -bios "$OVMF"; then
+case $(basename "$OVMF") in
+  OVMF_CODE_4M.fd) OVMF_VARS=$(dirname "$OVMF")/OVMF_VARS_4M.fd ;;
+  *) OVMF_VARS=$(dirname "$OVMF")/OVMF_VARS.fd ;;
+esac
+test -f "$OVMF_VARS" || { echo "ERROR: OVMF variable store is required" >&2; exit 2; }
+cp "$OVMF_VARS" "$WORK/uefi-vars.fd"
+if ! boot_and_check uefi \
+  -drive "if=pflash,format=raw,readonly=on,file=$OVMF" \
+  -drive "if=pflash,format=raw,file=$WORK/uefi-vars.fd"; then
   status=1
 fi
 exit "$status"
