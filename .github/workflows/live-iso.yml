@@ -18,7 +18,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring gettext
+      - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring gettext po4a
       - name: Install pinned Debian Live Build
         run: |
           git clone https://salsa.debian.org/live-team/live-build.git /tmp/live-build
