@@ -24,6 +24,7 @@ lb config noauto \
   --binary-images iso-hybrid \
   --archive-areas "main contrib non-free-firmware" \
   --keyring-packages "debian-archive-keyring" \
+  --security false \
   --mirror-bootstrap "https://deb.debian.org/debian" \
   --mirror-chroot "https://deb.debian.org/debian" \
   --mirror-chroot-security "https://security.debian.org/debian-security" \

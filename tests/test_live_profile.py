@@ -26,6 +26,9 @@ class LiveProfileTests(unittest.TestCase):
         self.assertIn("--ignore-system-defaults", builder)
         self.assertIn("--mode debian", builder)
         self.assertIn('--keyring-packages "debian-archive-keyring"', builder)
+        self.assertIn("--security false", builder)
+        security = (ROOT / "live/config/archives/debian-security.list.chroot").read_text()
+        self.assertIn("bookworm-security", security)
         self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
         self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
 
