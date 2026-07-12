@@ -1,0 +1,46 @@
+name: Redacted recovery case
+description: Share reproducible, non-private recovery evidence
+title: "[case] "
+labels: ["recovery-case"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never upload raw disks, credentials, serial numbers, IP addresses, or private filenames.
+  - type: input
+    id: version
+    attributes:
+      label: FNOS Rescue version
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: filesystem
+    attributes:
+      label: Filesystem
+      options: [Btrfs, ext4, NTFS, ZFS, XFS, FAT/exFAT, Unknown]
+    validations:
+      required: true
+  - type: textarea
+    id: topology
+    attributes:
+      label: Redacted topology
+      description: Disk count, approximate capacities, Basic/RAID/LVM layout, and offsets if known.
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms and read-only evidence
+      description: Include sanitized errors and tool versions. State whether there are physical I/O errors.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy and safety confirmation
+      options:
+        - label: I removed credentials, serial numbers, IP addresses, and private filenames.
+          required: true
+        - label: I have not run write operations on the source disk.
+          required: true

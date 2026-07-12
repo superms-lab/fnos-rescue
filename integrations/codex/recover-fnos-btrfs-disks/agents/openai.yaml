@@ -1,0 +1,4 @@
+interface:
+  display_name: "FNOS Btrfs Recovery"
+  short_description: "Safely recover deleted FNOS Basic-disk Btrfs data"
+  default_prompt: "Use $recover-fnos-btrfs-disks to inspect this FNOS disk and plan a read-only recovery."

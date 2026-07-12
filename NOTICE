@@ -1,0 +1,12 @@
+FNOS Rescue
+Copyright 2026 FNOS Rescue contributors
+
+The Python orchestrator, original helpers, documentation, and integration files are licensed
+under Apache License 2.0 unless a file or directory says otherwise.
+
+The modified btrfs-progs source files in vendor/btrfs-progs-v7 are derivative works of
+btrfs-progs and remain licensed under GPL-2.0-only. See the headers in those files and
+LICENSES/GPL-2.0-only.txt.
+
+FNOS is a product name of its respective owner. This community project is not affiliated with or
+endorsed by the FNOS vendor.
