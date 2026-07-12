@@ -5,6 +5,7 @@ case "${1:-}" in
   doctor|inspect|protect|btrfs-probe|fs-probe|destination-inspect|fnos-detect|fnos-quiesce-plan)
     command=$1
     shift
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/var/apps/fnos-rescue/lib/python3/dist-packages \
       exec /usr/bin/python3 -m fnos_rescue "$command" "$@"
     ;;

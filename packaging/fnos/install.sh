@@ -33,7 +33,9 @@ install -m 0755 "$SOURCE/app/bin/fnos-rescue-btrfs" "$APP/bin/fnos-rescue-btrfs"
 install -m 0755 "$SOURCE/fnos-rescue-helper" "$APP/bin/fnos-rescue-helper"
 cat > "$APP/bin/fnos-rescue" <<'EOF'
 #!/bin/sh
-PYTHONPATH=/var/apps/fnos-rescue/lib/python3/dist-packages exec /usr/bin/python3 -m fnos_rescue "$@"
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=/var/apps/fnos-rescue/lib/python3/dist-packages \
+  exec /usr/bin/python3 -m fnos_rescue "$@"
 EOF
 chmod 0755 "$APP/bin/fnos-rescue"
 cat > "$APP/bin/fnos-rescue-web-url" <<'EOF'

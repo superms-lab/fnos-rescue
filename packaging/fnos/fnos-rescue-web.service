@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=root
 Environment=HOME=/var/lib/fnos-rescue
+Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONPATH=/var/apps/fnos-rescue/lib/python3/dist-packages
 ExecStart=/usr/bin/python3 -m fnos_rescue serve --host 127.0.0.1 --port 8790
 Restart=on-failure

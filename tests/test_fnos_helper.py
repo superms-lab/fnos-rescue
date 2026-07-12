@@ -18,6 +18,7 @@ class FnosHelperTests(unittest.TestCase):
         helper = HELPER.read_text()
         self.assertIn("protect", helper)
         self.assertIn("fnos-quiesce-plan", helper)
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", helper)
         self.assertNotIn("job-run", helper)
         self.assertNotIn("job-control", helper)
 

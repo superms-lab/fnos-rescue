@@ -13,9 +13,11 @@ class FnosPackagingTests(unittest.TestCase):
         self.assertIn("--host 127.0.0.1", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn("ReadWritePaths=/var/lib/fnos-rescue", service)
+        self.assertIn("Environment=PYTHONDONTWRITEBYTECODE=1", service)
         installer = Path("packaging/fnos/install.sh").read_text()
         self.assertIn("systemctl is-active --quiet", installer)
         self.assertIn("install -d -m 0700 /var/lib/fnos-rescue", installer)
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", installer)
 
         lifecycle = Path("scripts/test-fnos-package-lifecycle.sh").read_text()
         self.assertIn("FNOS_RESCUE_DISPOSABLE_TEST", lifecycle)
@@ -23,6 +25,7 @@ class FnosPackagingTests(unittest.TestCase):
         self.assertIn("127\\.0\\.0\\.1:8790", lifecycle)
         self.assertIn("rollback-sentinel", lifecycle)
         self.assertIn("root helper accepted job-run", lifecycle)
+        self.assertIn("-name __pycache__", lifecycle)
 
     def test_builds_native_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

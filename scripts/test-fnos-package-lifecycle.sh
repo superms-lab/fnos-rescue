@@ -68,6 +68,7 @@ if "$APP/bin/fnos-rescue-helper" shell >/dev/null 2>&1; then
   echo "ERROR: root helper accepted shell" >&2
   exit 1
 fi
+test -z "$(find "$APP" \( -name __pycache__ -o -name '*.pyc' \) -print -quit)"
 
 printf 'previous-install\n' >"$APP/rollback-sentinel"
 "$PACKAGE_DIR/install.sh"
