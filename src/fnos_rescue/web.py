@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import getpass
+import csv
+import io
 import json
 import platform
 import socket
@@ -25,6 +27,15 @@ from .safety import assert_destination_not_source, confirm_serial, protect_sourc
 
 MAX_BODY_BYTES = 16_384
 CASE_ID = re.compile(r"^case-[0-9a-f]{12}$")
+WEB_JOB_PARAMETERS = {
+    "copy": {"source_device", "source_root", "destination", "paths"},
+    "verify": {"path", "limit"},
+    "btrfs-probe": {"device"},
+    "btrfs-root-scan": {"device", "fsid", "start_gib", "end_gib", "timeout"},
+    "btrfs-chunk-cache": {"device", "timeout"},
+    "btrfs-list": {"device", "chunk_cache", "filesystem_root", "timeout"},
+    "btrfs-extract-batch": {"device", "chunk_cache", "filesystem_root", "items", "per_file_timeout"},
+}
 
 
 def default_case_root() -> Path:
@@ -141,6 +152,32 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
             except (OSError, RescueError, ValueError) as exc:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
+        if path == "/api/job-status":
+            try:
+                query = parse_qs(parsed.query)
+                case_id = query.get("case", [""])[0]
+                job_id = query.get("job", [""])[0]
+                store = JobStore(case_directory(case_id))
+                job = store.load(job_id)
+                directory = store.root / job.job_id
+                events = _jsonl_tail(directory / "progress.jsonl", 100)
+                failures = _jsonl_tail(directory / "failures.jsonl", 100)
+                self._json(HTTPStatus.OK, {"job": job.to_dict(), "events": events, "failures": failures})
+            except (OSError, RescueError, ValueError, json.JSONDecodeError) as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        if path == "/api/inventory":
+            try:
+                query = parse_qs(parsed.query)
+                store = JobStore(case_directory(query.get("case", [""])[0]))
+                job = store.load(query.get("job", [""])[0])
+                if job.kind != "btrfs-list" or job.status not in {"completed", "completed_with_errors"}:
+                    raise ValueError("inventory is available only for a completed btrfs-list job")
+                inventory = store.root / job.job_id / "btrfs-files.tsv"
+                self._json(HTTPStatus.OK, {"items": _read_inventory(inventory)})
+            except (OSError, RescueError, ValueError) as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -186,11 +223,14 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
             elif path == "/api/jobs":
                 case_id = str(body.get("case_id") or "")
                 kind = str(body.get("kind") or "")
-                if kind not in {"copy", "verify", "btrfs-probe"}:
+                if kind not in WEB_JOB_PARAMETERS:
                     raise ValueError("job kind is not exposed by the web console")
                 parameters = body.get("parameters")
                 if not isinstance(parameters, dict):
                     raise ValueError("job parameters must be an object")
+                unexpected = set(parameters) - WEB_JOB_PARAMETERS[kind]
+                if unexpected:
+                    raise ValueError(f"job parameters are not allowed: {', '.join(sorted(unexpected))}")
                 job = JobStore(case_directory(case_id)).create(kind, parameters)
                 self._json(HTTPStatus.CREATED, job.to_dict())
             elif path == "/api/jobs/start":
@@ -221,6 +261,34 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         print(f"web: {format % args}")
+
+
+def _jsonl_tail(path: Path, limit: int) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    lines = path.read_text(errors="replace").splitlines()[-limit:]
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def _read_inventory(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        raise ValueError("inventory artifact is missing")
+    text = path.read_text(errors="replace")
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    if not reader.fieldnames or "path" not in reader.fieldnames:
+        raise ValueError("inventory has no path column")
+    items = []
+    for row in reader:
+        value = str(row.get("path") or "").strip()
+        if not value or value.startswith("/") or ".." in Path(value).parts:
+            continue
+        item = {key: str(value or "") for key, value in row.items() if key}
+        item["inode"] = item.get("inode") or item.get("objectid", "")
+        item["expected_size"] = item.get("expected_size") or item.get("size", "")
+        items.append(item)
+        if len(items) >= 50_000:
+            break
+    return items
 
 
 def serve(host: str, port: int, static_dir: str | Path | None = None) -> None:

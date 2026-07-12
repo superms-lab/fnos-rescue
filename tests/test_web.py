@@ -1,10 +1,12 @@
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fnos_rescue.devices import DeviceFacts
-from fnos_rescue.web import RescueWebHandler, _human_size, case_directory, list_devices
+from fnos_rescue.web import RescueWebHandler, _human_size, _read_inventory, case_directory, list_devices
 
 
 class WebTests(unittest.TestCase):
@@ -60,6 +62,30 @@ class WebTests(unittest.TestCase):
         handler._json = Mock()
         handler.do_POST()
         self.assertEqual(handler._json.call_args.args[0], 403)
+
+    def test_web_rejects_arbitrary_recovery_tool_path(self):
+        handler = object.__new__(RescueWebHandler)
+        handler.path = "/api/jobs"
+        payload = json.dumps({
+            "case_id": "case-111111111111",
+            "kind": "btrfs-root-scan",
+            "parameters": {"device": "/dev/sda", "fsid": "1" * 32, "scanner": "/tmp/tool"},
+        }).encode()
+        handler.headers = {"Content-Length": str(len(payload)), "Host": "localhost:8790", "X-FNOS-Token": "test-token"}
+        handler.server = Mock(csrf_token="test-token")
+        handler.rfile = io.BytesIO(payload)
+        handler._json = Mock()
+        handler.do_POST()
+        self.assertEqual(handler._json.call_args.args[0], 400)
+        self.assertIn("not allowed", handler._json.call_args.args[1]["error"])
+
+    def test_inventory_rejects_unsafe_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "inventory.tsv"
+            path.write_text("rootid\tobjectid\tsize\tpath\n257\t9\t4\tPhotos/a.jpg\n257\t10\t4\t../escape\n")
+            items = _read_inventory(path)
+        self.assertEqual([item["path"] for item in items], ["Photos/a.jpg"])
+        self.assertEqual(items[0]["inode"], "9")
 
 
 if __name__ == "__main__":
