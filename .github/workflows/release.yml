@@ -19,12 +19,13 @@ jobs:
       - run: python -m pip install --upgrade pip build
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -v
-      - run: rm -rf dist build
+      - run: ./scripts/clean-release.sh
       - run: ./scripts/build-recovery-tools.sh
       - run: python -m build
       - run: ./scripts/build-deb.sh
       - run: ./scripts/build-fnos-package.sh
       - run: python scripts/generate-release-metadata.py
+      - run: python scripts/verify-release-artifacts.py
       - name: Verify tag matches package version
         run: |
           version=$(python -c 'import fnos_rescue; print(fnos_rescue.__version__)')

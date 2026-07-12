@@ -14,6 +14,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ReleaseMetadataTests(unittest.TestCase):
+    def test_release_preflight_cleans_before_building(self):
+        preflight = (SCRIPT.parent / "release-preflight.sh").read_text()
+        self.assertLess(preflight.index("clean-release.sh"), preflight.index("build-recovery-tools.sh"))
+        self.assertIn("verify-release-artifacts.py", preflight)
+
     def test_sbom_components_are_pinned(self):
         components = MODULE.components()
         self.assertTrue(components)

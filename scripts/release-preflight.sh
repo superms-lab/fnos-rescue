@@ -25,10 +25,14 @@ git diff --check
 ./scripts/security-scan.sh
 ./scripts/validate-live-profile.sh
 PYTHONPATH=src python3 -m unittest discover -s tests
-python3 -m compileall -q src scripts/generate-release-metadata.py
 (cd web && npm ci && npm run build && npm run audit)
 rm -rf src/fnos_rescue/web_dist
 cp -R web/dist src/fnos_rescue/web_dist
+./scripts/clean-release.sh
+./scripts/build-recovery-tools.sh
+python3 -m build
+./scripts/build-deb.sh
 ./scripts/build-fnos-package.sh
 python3 scripts/generate-release-metadata.py
+python3 scripts/verify-release-artifacts.py
 echo "release preflight passed"
