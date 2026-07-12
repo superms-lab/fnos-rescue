@@ -36,7 +36,7 @@ lb config noauto \
   --mirror-chroot-security "https://security.debian.org/debian-security" \
   --mirror-binary "https://deb.debian.org/debian" \
   --mirror-binary-security "https://security.debian.org/debian-security" \
-  --bootappend-live "boot=live components hostname=fnos-rescue username=user"
+  --bootappend-live "boot=live components hostname=fnos-rescue username=user console=tty0 console=ttyS0,115200n8"
 sudo lb build
 ISO=$(find . -maxdepth 1 -name 'live-image-*.hybrid.iso' -print -quit)
 test -n "$ISO"

@@ -9,8 +9,11 @@ required=(
   live/config/hooks/live/010-fnos-rescue.hook.chroot
   live/config/includes.chroot/etc/systemd/system/fnos-rescue-web.service
   live/config/includes.chroot/etc/systemd/system/fnos-rescue-kiosk.service
+  live/config/includes.chroot/etc/systemd/system/fnos-rescue-ready.service
   live/config/includes.chroot/etc/xdg/openbox/autostart
   scripts/live-session.sh
+  scripts/live-ready.sh
+  scripts/test-live-iso.sh
 )
 for path in "${required[@]}"; do
   test -s "$ROOT/$path" || { echo "missing live profile file: $path" >&2; exit 2; }

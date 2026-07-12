@@ -1,0 +1,12 @@
+[Unit]
+Description=FNOS Rescue Live readiness evidence
+After=fnos-rescue-web.service fnos-rescue-kiosk.service
+Requires=fnos-rescue-web.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/fnos-rescue/scripts/live-ready.sh
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

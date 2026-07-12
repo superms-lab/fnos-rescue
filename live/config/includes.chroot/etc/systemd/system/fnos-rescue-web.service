@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
+Environment=HOME=/var/lib/fnos-rescue
 Environment=PYTHONPATH=/opt/fnos-rescue/src
 ExecStart=/usr/bin/python3 -m fnos_rescue serve --host 127.0.0.1 --port 8790 --static-dir /opt/fnos-rescue/web/dist
 Restart=on-failure
@@ -12,7 +13,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/root/.local/share/fnos-rescue /run /tmp
+ReadWritePaths=/var/lib/fnos-rescue /run /tmp
 
 [Install]
 WantedBy=multi-user.target
