@@ -41,6 +41,7 @@ class LiveProfileTests(unittest.TestCase):
         diagnostics = (ROOT / "scripts/collect-live-iso-diagnostics.sh").read_text()
         self.assertIn("-report_el_torito plain", diagnostics)
         self.assertIn("boot-configs.txt", diagnostics)
+        self.assertIn("-name '*.cfg'", diagnostics)
         workflow = (ROOT / ".github/workflows/live-iso.yml").read_text()
         self.assertIn("fnos-rescue-live-diagnostics", workflow)
 

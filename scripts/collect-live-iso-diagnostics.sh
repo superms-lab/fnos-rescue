@@ -42,7 +42,9 @@ done < <(
     -print | sort
 )
 
-if grep -R -n -E '@(KERNEL|LINUX|INITRD|APPEND_LIVE|LB_BOOTAPPEND)' "$OUT/iso-tree/isolinux" >"$OUT/isolinux-placeholders.txt"; then
+if find "$OUT/iso-tree/isolinux" -maxdepth 1 -type f -name '*.cfg' \
+  -exec grep -n -H -E '@(KERNEL|LINUX|INITRD|APPEND_LIVE|LB_BOOTAPPEND)' {} + \
+  >"$OUT/isolinux-placeholders.txt"; then
   cat "$OUT/isolinux-placeholders.txt" >&2
   echo "ERROR: unresolved live-build placeholders remain in BIOS boot configuration" >&2
   exit 1
