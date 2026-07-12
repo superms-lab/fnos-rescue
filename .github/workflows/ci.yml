@@ -55,3 +55,11 @@ jobs:
           dpkg-deb --info "$package"
           sudo dpkg -i "$package"
           /usr/bin/fnos-rescue --version
+      - if: matrix.python-version == '3.11'
+        run: ./scripts/build-fnos-package.sh
+      - if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: fnos-rescue-fnos-package
+          path: dist/fnos-rescue-fnos-*.tar.gz
+          if-no-files-found: error
