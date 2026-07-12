@@ -34,6 +34,10 @@ class LiveProfileTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/live-iso.yml").read_text()
         self.assertIn("salsa.debian.org/live-team/live-build.git", workflow)
         self.assertIn("37c453337996a3f9cbf80697e2321d8162369776", workflow)
+
+    def test_private_btrfs_build_disables_unneeded_convert(self):
+        builder = (ROOT / "scripts/build-recovery-tools.sh").read_text()
+        self.assertIn("--disable-convert", builder)
         self.assertIn('--mirror-bootstrap "https://deb.debian.org/debian"', builder)
         self.assertIn('--mirror-chroot-security "https://security.debian.org/debian-security"', builder)
 

@@ -27,7 +27,7 @@ cp "$ROOT/vendor/btrfs-progs-v7/restore.c" "$SOURCE/cmds/restore.c"
 if test ! -x "$SOURCE/configure"; then
   (cd "$SOURCE" && ./autogen.sh)
 fi
-(cd "$SOURCE" && ./configure --disable-documentation --disable-python)
+(cd "$SOURCE" && ./configure --disable-documentation --disable-python --disable-convert)
 make -C "$SOURCE" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)" btrfs
 install -m 0755 "$SOURCE/btrfs" "$OUT/fnos-rescue-btrfs"
 
