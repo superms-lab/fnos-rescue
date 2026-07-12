@@ -11,18 +11,43 @@ boot_and_check() {
   name=$1
   shift
   log="$WORK/$name.log"
-  set +e
-  timeout 180 qemu-system-x86_64 -machine accel=tcg -cpu max -m 3072 -smp 2 \
+  monitor="$WORK/$name.monitor"
+  mkfifo "$monitor"
+  exec 9<>"$monitor"
+  qemu-system-x86_64 -machine accel=tcg -cpu max -m 3072 -smp 2 \
     -drive "file=$ISO,media=cdrom,readonly=on" -boot d \
-    -display none -serial stdio -monitor none -no-reboot "$@" >"$log" 2>&1
-  status=$?
-  set -e
+    -display none -serial "file:$log" -monitor stdio -no-reboot "$@" \
+    <&9 >"$WORK/$name.qemu.log" 2>&1 &
+  pid=$!
+
+  # Debian Live's BIOS and UEFI menus are graphical. Press Enter through the
+  # QEMU monitor so a headless CI runner actually boots the default entry.
+  sleep 3
+  printf 'sendkey ret\n' >&9
+  sleep 7
+  printf 'sendkey ret\n' >&9
+
+  deadline=$((SECONDS + 240))
+  while kill -0 "$pid" 2>/dev/null && test "$SECONDS" -lt "$deadline"; do
+    if grep -q 'FNOS_RESCUE_READY web=ok kiosk=ok tools=ok' "$log" 2>/dev/null; then
+      printf 'quit\n' >&9
+      wait "$pid" || true
+      exec 9>&-
+      echo "$name boot readiness passed"
+      return 0
+    fi
+    sleep 2
+  done
+
+  printf 'quit\n' >&9 2>/dev/null || true
+  wait "$pid" || true
+  exec 9>&-
   if ! grep -q 'FNOS_RESCUE_READY web=ok kiosk=ok tools=ok' "$log"; then
     tail -200 "$log" >&2
-    echo "ERROR: $name boot did not reach FNOS Rescue readiness (qemu status $status)" >&2
+    tail -100 "$WORK/$name.qemu.log" >&2
+    echo "ERROR: $name boot did not reach FNOS Rescue readiness" >&2
     return 1
   fi
-  echo "$name boot readiness passed"
 }
 
 boot_and_check bios

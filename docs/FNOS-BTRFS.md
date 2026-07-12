@@ -37,7 +37,7 @@ valid FSID, generation, root-tree address, device UUID, and system chunk array.
 Compile and run the bundled scanner against the read-only Btrfs view:
 
 ```bash
-cc -O2 -Wall -Wextra -o scan-btrfs-roots helpers/scan_btrfs_roots.c
+./scripts/build-recovery-tools.sh
 sudo ./scan-btrfs-roots /dev/READ_ONLY_LOOP FSID START_GIB END_GIB \
   > scans/root-scan.log 2>&1
 ```

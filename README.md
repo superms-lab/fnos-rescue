@@ -122,7 +122,7 @@ Btrfs evidence collection can also run as durable jobs:
 fnos-rescue job-create ./case-001 btrfs-probe \
   --parameters '{"device":"/dev/loop16"}'
 fnos-rescue job-create ./case-001 btrfs-root-scan --parameters \
-  '{"device":"/dev/loop16","scanner":"/opt/fnos-rescue/scan_btrfs_roots","fsid":"11111111-2222-3333-4444-555555555555"}'
+  '{"device":"/dev/loop16","fsid":"11111111-2222-3333-4444-555555555555"}'
 fnos-rescue job-run ./case-001 job-0123456789ab --background
 ```
 
@@ -134,11 +134,11 @@ and extract one known inode into the private job directory:
 
 ```bash
 fnos-rescue job-create ./case-001 btrfs-chunk-cache --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs"}'
+  '{"device":"/dev/loop16"}'
 fnos-rescue job-create ./case-001 btrfs-list --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
+  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
 fnos-rescue job-create ./case-001 btrfs-extract-inode --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
+  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
 ```
 
 Extraction first lands inside the private case job directory. Moving validated content to a final

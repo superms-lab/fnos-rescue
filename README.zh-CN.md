@@ -121,7 +121,7 @@ Btrfs 证据采集也可以作为持久任务运行：
 fnos-rescue job-create ./case-001 btrfs-probe \
   --parameters '{"device":"/dev/loop16"}'
 fnos-rescue job-create ./case-001 btrfs-root-scan --parameters \
-  '{"device":"/dev/loop16","scanner":"/opt/fnos-rescue/scan_btrfs_roots","fsid":"11111111-2222-3333-4444-555555555555"}'
+  '{"device":"/dev/loop16","fsid":"11111111-2222-3333-4444-555555555555"}'
 fnos-rescue job-run ./case-001 job-0123456789ab --background
 ```
 
@@ -132,11 +132,11 @@ fnos-rescue job-run ./case-001 job-0123456789ab --background
 
 ```bash
 fnos-rescue job-create ./case-001 btrfs-chunk-cache --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs"}'
+  '{"device":"/dev/loop16"}'
 fnos-rescue job-create ./case-001 btrfs-list --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
+  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
 fnos-rescue job-create ./case-001 btrfs-extract-inode --parameters \
-  '{"device":"/dev/loop16","private_btrfs":"/opt/fnos-rescue/private/btrfs","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
+  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
 ```
 
 提取结果先进入案例任务目录。将已验证文件送到最终目标仍使用独立 `copy` Job，确保不能绕过
