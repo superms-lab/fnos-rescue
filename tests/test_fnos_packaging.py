@@ -17,6 +17,13 @@ class FnosPackagingTests(unittest.TestCase):
         self.assertIn("systemctl is-active --quiet", installer)
         self.assertIn("install -d -m 0700 /var/lib/fnos-rescue", installer)
 
+        lifecycle = Path("scripts/test-fnos-package-lifecycle.sh").read_text()
+        self.assertIn("FNOS_RESCUE_DISPOSABLE_TEST", lifecycle)
+        self.assertIn("/fs/.fnos-rescue-disposable-test", lifecycle)
+        self.assertIn("127\\.0\\.0\\.1:8790", lifecycle)
+        self.assertIn("rollback-sentinel", lifecycle)
+        self.assertIn("root helper accepted job-run", lifecycle)
+
     def test_builds_native_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             tools = Path(temporary)

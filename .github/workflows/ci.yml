@@ -58,6 +58,15 @@ jobs:
       - if: matrix.python-version == '3.11'
         run: ./scripts/build-fnos-package.sh
       - if: matrix.python-version == '3.11'
+        name: Test fnOS Web install, rollback, and uninstall lifecycle
+        run: |
+          sudo mkdir -p /fs /var/apps
+          sudo touch /fs/.fnos-rescue-disposable-test
+          package=$(find dist -maxdepth 1 -name 'fnos-rescue_*_fnos_*.tar.gz' -print -quit)
+          test -n "$package"
+          sudo env FNOS_RESCUE_DISPOSABLE_TEST=1 \
+            ./scripts/test-fnos-package-lifecycle.sh "$package"
+      - if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: fnos-rescue-fnos-package
