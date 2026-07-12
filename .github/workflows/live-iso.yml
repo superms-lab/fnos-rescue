@@ -18,7 +18,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring gettext po4a build-essential autoconf automake libtool pkg-config uuid-dev libblkid-dev libudev-dev libzstd-dev liblzo2-dev zlib1g-dev libxxhash-dev liburing-dev qemu-system-x86 ovmf
+      - run: sudo apt-get update && sudo apt-get install -y live-build debian-archive-keyring gettext po4a build-essential autoconf automake libtool pkg-config uuid-dev libblkid-dev libudev-dev libzstd-dev liblzo2-dev zlib1g-dev libxxhash-dev liburing-dev qemu-system-x86 ovmf xorriso
       - name: Install pinned Debian Live Build
         run: |
           git clone https://salsa.debian.org/live-team/live-build.git /tmp/live-build
@@ -26,7 +26,18 @@ jobs:
           sudo make -C /tmp/live-build install
           lb --version
       - run: ./scripts/build-live-iso.sh
-      - run: ./scripts/test-live-iso.sh dist/fnos-rescue-live-amd64.iso
+      - name: Inspect Live ISO boot configuration
+        run: ./scripts/collect-live-iso-diagnostics.sh dist/fnos-rescue-live-amd64.iso dist/live-diagnostics
+      - name: Boot Live ISO in BIOS and UEFI modes
+        env:
+          FNOS_RESCUE_LIVE_DIAGNOSTICS_DIR: dist/live-diagnostics
+        run: ./scripts/test-live-iso.sh dist/fnos-rescue-live-amd64.iso
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        if: always()
+        with:
+          name: fnos-rescue-live-diagnostics
+          path: dist/live-diagnostics
+          if-no-files-found: warn
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         if: always()
         with:

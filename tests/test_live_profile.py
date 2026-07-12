@@ -22,6 +22,14 @@ class LiveProfileTests(unittest.TestCase):
         self.assertIn("boot_and_check bios", smoke)
         self.assertIn("boot_and_check uefi", smoke)
         self.assertIn("FNOS_RESCUE_READY", smoke)
+        self.assertIn("screendump", smoke)
+        self.assertIn("FNOS_RESCUE_LIVE_DIAGNOSTICS_DIR", smoke)
+
+        diagnostics = (ROOT / "scripts/collect-live-iso-diagnostics.sh").read_text()
+        self.assertIn("-report_el_torito plain", diagnostics)
+        self.assertIn("boot-configs.txt", diagnostics)
+        workflow = (ROOT / ".github/workflows/live-iso.yml").read_text()
+        self.assertIn("fnos-rescue-live-diagnostics", workflow)
 
     def test_windows_helper_has_no_mutating_disk_commands(self):
         helper = (ROOT / "scripts/windows/inspect-wsl.ps1").read_text().lower()

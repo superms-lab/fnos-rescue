@@ -4,8 +4,13 @@ set -euo pipefail
 ISO=${1:?usage: test-live-iso.sh /path/to/fnos-rescue.iso}
 test -f "$ISO" || { echo "ERROR: ISO not found: $ISO" >&2; exit 2; }
 command -v qemu-system-x86_64 >/dev/null || { echo "ERROR: qemu-system-x86_64 is required" >&2; exit 2; }
-WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+if test -n "${FNOS_RESCUE_LIVE_DIAGNOSTICS_DIR:-}"; then
+  WORK=$FNOS_RESCUE_LIVE_DIAGNOSTICS_DIR
+  mkdir -p "$WORK"
+else
+  WORK=$(mktemp -d)
+  trap 'rm -rf "$WORK"' EXIT
+fi
 
 boot_and_check() {
   name=$1
@@ -39,6 +44,10 @@ boot_and_check() {
     sleep 2
   done
 
+  # Capture the last VGA frame before stopping QEMU. Serial output can remain
+  # empty when a graphical boot menu or firmware error blocks the guest.
+  printf 'screendump %s\n' "$WORK/$name.ppm" >&9 2>/dev/null || true
+  sleep 1
   printf 'quit\n' >&9 2>/dev/null || true
   wait "$pid" || true
   exec 9>&-
@@ -50,7 +59,13 @@ boot_and_check() {
   fi
 }
 
-boot_and_check bios
+status=0
+if ! boot_and_check bios; then
+  status=1
+fi
 OVMF=$(find /usr/share/OVMF /usr/share/ovmf -type f \( -name 'OVMF_CODE.fd' -o -name 'OVMF_CODE_4M.fd' \) 2>/dev/null | head -1)
 test -n "$OVMF" || { echo "ERROR: OVMF firmware is required" >&2; exit 2; }
-boot_and_check uefi -bios "$OVMF"
+if ! boot_and_check uefi -bios "$OVMF"; then
+  status=1
+fi
+exit "$status"
