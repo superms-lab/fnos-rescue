@@ -15,6 +15,23 @@ from .errors import RescueError, ToolMissingError
 from .errors import JobControlRequested
 
 
+# Every general-purpose child process launched by the application must be one
+# of these reviewed, non-shell tools.  Keeping the allowlist here prevents a
+# caller from turning the runner into an arbitrary command execution primitive.
+APPROVED_TOOLS = {
+    "blockdev": "blockdev",
+    "btrfs": "btrfs",
+    "dumpe2fs": "dumpe2fs",
+    "file": "file",
+    "findmnt": "findmnt",
+    "lsblk": "lsblk",
+    "ntfsinfo": "ntfsinfo",
+    "qemu-img": "qemu-img",
+    "qemu-nbd": "qemu-nbd",
+    "systemctl": "systemctl",
+}
+
+
 @dataclass(frozen=True)
 class CommandResult:
     argv: tuple[str, ...]
@@ -30,6 +47,30 @@ def require_tool(name: str) -> str:
     return path
 
 
+def _approved_argv(
+    argv: Iterable[str | Path], *, trusted_executable: str | Path | None = None
+) -> tuple[str, ...]:
+    values = tuple(str(value) for value in argv)
+    if not values:
+        raise RescueError("command line is empty")
+    if any(not value or "\0" in value for value in values):
+        raise RescueError("command line contains an empty argument or null byte")
+
+    requested = values[0]
+    if trusted_executable is not None:
+        trusted = os.path.realpath(os.path.abspath(os.fspath(trusted_executable)))
+        candidate = os.path.realpath(os.path.abspath(requested))
+        if candidate != trusted or not os.path.isabs(requested):
+            raise RescueError("command executable does not match the trusted packaged tool")
+        executable = trusted
+    else:
+        tool = APPROVED_TOOLS.get(requested)
+        if tool is None or os.path.basename(requested) != requested:
+            raise RescueError(f"command executable is not approved: {requested}")
+        executable = require_tool(tool)
+    return (executable, *values[1:])
+
+
 def run(
     argv: Iterable[str | Path],
     *,
@@ -38,7 +79,7 @@ def run(
     text: bool = True,
     env: dict[str, str] | None = None,
 ) -> CommandResult:
-    args = tuple(str(value) for value in argv)
+    args = _approved_argv(argv)
     completed = subprocess.run(
         args,
         check=False,
@@ -69,6 +110,7 @@ def run_interruptible(
     stdout_path: str | Path | None = None,
     stderr_path: str | Path | None = None,
     append: bool = True,
+    trusted_executable: str | Path | None = None,
 ) -> CommandResult:
     if stdout_path is not None and stderr_path is not None:
         return run_streaming(
@@ -80,6 +122,7 @@ def run_interruptible(
             env=env,
             poll_interval=poll_interval,
             append=append,
+            trusted_executable=trusted_executable,
         )
     with tempfile.TemporaryDirectory(prefix="fnos-rescue-command-") as temporary:
         return run_streaming(
@@ -91,6 +134,7 @@ def run_interruptible(
             env=env,
             poll_interval=poll_interval,
             append=False,
+            trusted_executable=trusted_executable,
         )
 
 
@@ -126,9 +170,10 @@ def run_streaming(
     env: dict[str, str] | None = None,
     poll_interval: float = 0.2,
     append: bool = False,
+    trusted_executable: str | Path | None = None,
 ) -> CommandResult:
     """Run with child output continuously drained to bounded-per-job disk logs."""
-    args = tuple(str(value) for value in argv)
+    args = _approved_argv(argv, trusted_executable=trusted_executable)
     started = time.monotonic()
     stdout_target = Path(stdout_path)
     stderr_target = Path(stderr_path)
