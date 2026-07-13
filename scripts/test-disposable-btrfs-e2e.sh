@@ -47,7 +47,8 @@ EXPECTED_SHA=$(sha256sum "$SOURCE_MOUNT/Photos/2026/known.txt" | awk '{print $1}
 printf '原始大小(bytes)\t相对路径\tSHA256\n%s\t%s\t%s\n' \
   "$EXPECTED_SIZE" 'Photos/2026/known.txt' "$EXPECTED_SHA" > "$WORK/manifest.tsv"
 
-PYTHONPATH="$ROOT/src" python3 "$ROOT/helpers/copy_validated_paths.py" \
+FNOS_RESCUE_DESTINATION_ROOTS="$WORK" PYTHONPATH="$ROOT/src" \
+  python3 "$ROOT/helpers/copy_validated_paths.py" \
   "$WORK/manifest.tsv" "$SOURCE_MOUNT" "$DESTINATION_MOUNT" "$WORK/copy-results.tsv" \
   --source-device "$SOURCE_LOOP"
 cmp "$SOURCE_MOUNT/Photos/2026/known.txt" "$DESTINATION_MOUNT/Photos/2026/known.txt"
