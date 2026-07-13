@@ -328,7 +328,7 @@ static int validate_forced_root(struct extent_buffer *eb, u64 expected_bytenr,
 {
 	char name[96];
 	char actual_fsid[BTRFS_FSID_SIZE * 2 + 1];
-	const u8 *header_fsid = btrfs_header_fsid(eb);
+	u8 header_fsid[BTRFS_FSID_SIZE];
 	const char *expected_fsid;
 	u64 owner;
 	u64 generation;
@@ -348,6 +348,8 @@ static int validate_forced_root(struct extent_buffer *eb, u64 expected_bytenr,
 			prefix);
 		return -EINVAL;
 	}
+	read_extent_buffer(eb, header_fsid, btrfs_header_fsid(),
+			   BTRFS_FSID_SIZE);
 	for (i = 0; i < BTRFS_FSID_SIZE; i++)
 		snprintf(actual_fsid + i * 2, 3, "%02x", header_fsid[i]);
 	actual_fsid[BTRFS_FSID_SIZE * 2] = '\0';
@@ -484,7 +486,7 @@ static int list_cached_dir(struct btrfs_root *root, u64 dirid,
 		btrfs_dir_item_key_to_cpu(leaf, di, &location);
 		type = btrfs_dir_ftype(leaf, di);
 		entry_size = 0;
-		if (type == BTRFS_FT_REG &&
+		if (type == BTRFS_FT_REG_FILE &&
 		    cached_inode_size(root, location.objectid, &entry_size)) {
 			ret = -EIO;
 			break;

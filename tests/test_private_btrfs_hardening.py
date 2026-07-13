@@ -22,6 +22,7 @@ class PrivateBtrfsHardeningTests(unittest.TestCase):
             "btrfs_header_owner(eb)",
             "btrfs_header_generation(eb)",
             "btrfs_header_level(eb)",
+            "read_extent_buffer(eb, header_fsid, btrfs_header_fsid()",
         ):
             self.assertIn(marker, self.source)
 
@@ -42,6 +43,7 @@ class PrivateBtrfsHardeningTests(unittest.TestCase):
         self.assertIn("fflush(out) || fsync(fileno(out))", self.source)
         self.assertIn("fsync(fd)", self.source)
         self.assertIn("cached_inode_size(root, location.objectid, &entry_size)", self.source)
+        self.assertIn("type == BTRFS_FT_REG_FILE", self.source)
         self.assertIn("ret = -ENOENT", self.source)
 
 
