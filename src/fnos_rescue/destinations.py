@@ -62,24 +62,35 @@ def _approved_destination(path: str | Path, approved_roots: tuple[Path, ...] | N
 
 def _existing_ancestor(path: Path) -> Path:
     current = path
-    while not current.exists() and current != current.parent:
+    while run(["test", "-d", current], check=False).returncode and current != current.parent:
         current = current.parent
-    if not current.exists() or not current.is_dir():
+    if run(["test", "-d", current], check=False).returncode:
         raise SafetyError(f"destination has no existing directory ancestor: {path}")
     return current
 
 
-def parse_findmnt(document: dict[str, Any]) -> tuple[str, str, str, tuple[str, ...]]:
+def parse_findmnt(
+    document: dict[str, Any],
+) -> tuple[str, str, str, tuple[str, ...], int, int]:
     filesystems = document.get("filesystems") or []
     if len(filesystems) != 1:
         raise SafetyError("findmnt did not identify exactly one destination filesystem")
     entry = filesystems[0]
     options = tuple(str(entry.get("options") or "").split(","))
+    try:
+        free_bytes = int(entry["fsavail"])
+        total_bytes = int(entry["fssize"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SafetyError("findmnt did not return numeric destination capacity") from exc
+    if free_bytes < 0 or total_bytes <= 0 or free_bytes > total_bytes:
+        raise SafetyError("findmnt returned invalid destination capacity")
     return (
         str(entry.get("source") or "unknown"),
         str(entry.get("target") or "unknown"),
         str(entry.get("fstype") or "unknown"),
         options,
+        free_bytes,
+        total_bytes,
     )
 
 
@@ -92,14 +103,17 @@ def inspect_destination(
         raise SafetyError("destination mount inspection requires Linux")
     require_tool("findmnt")
     result = run(
-        ["findmnt", "--json", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS", "--target", ancestor]
+        [
+            "findmnt", "--bytes", "--json", "--output",
+            "SOURCE,TARGET,FSTYPE,OPTIONS,FSAVAIL,FSSIZE", "--target", ancestor,
+        ]
     )
-    source, mountpoint, filesystem, options = parse_findmnt(json.loads(result.stdout))
-    usage = os.statvfs(ancestor)
-    free_bytes = usage.f_bavail * usage.f_frsize
-    total_bytes = usage.f_blocks * usage.f_frsize
+    source, mountpoint, filesystem, options, free_bytes, total_bytes = parse_findmnt(
+        json.loads(result.stdout)
+    )
     read_only = "ro" in options
-    writable = not read_only and os.access(ancestor, os.W_OK | os.X_OK)
+    writable = not read_only and not run(["test", "-w", ancestor], check=False).returncode
+    writable = writable and not run(["test", "-x", ancestor], check=False).returncode
     return DestinationFacts(
         path=str(destination),
         existing_ancestor=str(ancestor),
