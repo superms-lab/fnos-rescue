@@ -69,29 +69,31 @@ def _existing_ancestor(path: Path) -> Path:
     return current
 
 
-def parse_findmnt(
-    document: dict[str, Any],
-) -> tuple[str, str, str, tuple[str, ...], int, int]:
+def parse_findmnt(document: dict[str, Any]) -> tuple[str, str, str, tuple[str, ...]]:
     filesystems = document.get("filesystems") or []
     if len(filesystems) != 1:
         raise SafetyError("findmnt did not identify exactly one destination filesystem")
     entry = filesystems[0]
     options = tuple(str(entry.get("options") or "").split(","))
-    try:
-        free_bytes = int(entry["fsavail"])
-        total_bytes = int(entry["fssize"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise SafetyError("findmnt did not return numeric destination capacity") from exc
-    if free_bytes < 0 or total_bytes <= 0 or free_bytes > total_bytes:
-        raise SafetyError("findmnt returned invalid destination capacity")
     return (
         str(entry.get("source") or "unknown"),
         str(entry.get("target") or "unknown"),
         str(entry.get("fstype") or "unknown"),
         options,
-        free_bytes,
-        total_bytes,
     )
+
+
+def parse_df_capacity(output: str) -> tuple[int, int]:
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    if len(lines) != 2 or len(lines[1]) != 2:
+        raise SafetyError("df did not return exactly one destination capacity record")
+    try:
+        free_bytes, total_bytes = (int(value) for value in lines[1])
+    except ValueError as exc:
+        raise SafetyError("df did not return numeric destination capacity") from exc
+    if free_bytes < 0 or total_bytes <= 0 or free_bytes > total_bytes:
+        raise SafetyError("df returned invalid destination capacity")
+    return free_bytes, total_bytes
 
 
 def inspect_destination(
@@ -104,13 +106,13 @@ def inspect_destination(
     require_tool("findmnt")
     result = run(
         [
-            "findmnt", "--bytes", "--json", "--output",
-            "SOURCE,TARGET,FSTYPE,OPTIONS,FSAVAIL,FSSIZE", "--target", ancestor,
+            "findmnt", "--json", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS",
+            "--target", ancestor,
         ]
     )
-    source, mountpoint, filesystem, options, free_bytes, total_bytes = parse_findmnt(
-        json.loads(result.stdout)
-    )
+    source, mountpoint, filesystem, options = parse_findmnt(json.loads(result.stdout))
+    capacity = run(["df", "--block-size=1", "--output=avail,size", "--", ancestor])
+    free_bytes, total_bytes = parse_df_capacity(capacity.stdout)
     read_only = "ro" in options
     writable = not read_only and not run(["test", "-w", ancestor], check=False).returncode
     writable = writable and not run(["test", "-x", ancestor], check=False).returncode
