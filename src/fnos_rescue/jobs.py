@@ -90,10 +90,26 @@ class JobStore:
     def load(self, job_id: str) -> RecoveryJob:
         if not JOB_ID.fullmatch(job_id):
             raise RescueError(f"invalid job id: {job_id}")
-        path = self.root / job_id / "job.json"
-        if not path.is_file():
+        directory = next(
+            (
+                candidate
+                for candidate in self.root.iterdir()
+                if candidate.name == job_id
+                and JOB_ID.fullmatch(candidate.name)
+                and candidate.is_dir()
+                and not candidate.is_symlink()
+            ),
+            None,
+        )
+        if directory is None:
             raise RescueError(f"job does not exist: {job_id}")
-        return RecoveryJob(**json.loads(path.read_text()))
+        path = directory / "job.json"
+        if not path.is_file() or path.is_symlink():
+            raise RescueError(f"job record is missing or unsafe: {job_id}")
+        job = RecoveryJob(**json.loads(path.read_text()))
+        if job.job_id != directory.name or not JOB_ID.fullmatch(job.job_id):
+            raise RescueError(f"job record identity does not match its directory: {job_id}")
+        return job
 
     def list(self) -> list[RecoveryJob]:
         return [self.load(path.name) for path in sorted(self.root.glob("job-*")) if path.is_dir()]

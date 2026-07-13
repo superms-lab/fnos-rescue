@@ -64,7 +64,10 @@ def parse_findmnt(document: dict[str, Any]) -> tuple[str, str, str, tuple[str, .
 
 
 def inspect_destination(path: str | Path) -> DestinationFacts:
-    destination = Path(path).expanduser().resolve()
+    raw = os.fspath(path)
+    if not raw or "\0" in raw:
+        raise SafetyError("destination path is empty or contains a null byte")
+    destination = Path(os.path.realpath(os.path.abspath(os.path.expanduser(raw))))
     ancestor = _existing_ancestor(destination)
     if platform.system() != "Linux":
         raise SafetyError("destination mount inspection requires Linux")
