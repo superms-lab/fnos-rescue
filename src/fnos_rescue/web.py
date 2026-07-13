@@ -313,7 +313,7 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
                     raise ValueError("destination and source device are required")
                 _require_case_device(case_path, case, source_device)
                 destination_path = _require_web_root(destination)
-                facts = inspect_destination(destination_path)
+                facts = inspect_destination(destination_path, approved_roots=_configured_web_roots())
                 assert_destination_not_source(source_device, facts.existing_ancestor)
                 assert_destination_ready(facts, int(body.get("required_bytes") or 0))
                 self._json(HTTPStatus.OK, facts.to_dict())
