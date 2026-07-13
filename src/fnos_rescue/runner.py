@@ -29,6 +29,7 @@ APPROVED_TOOLS = {
     "qemu-img": "qemu-img",
     "qemu-nbd": "qemu-nbd",
     "systemctl": "systemctl",
+    "test": "test",
 }
 
 
