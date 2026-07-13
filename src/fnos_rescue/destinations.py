@@ -62,9 +62,9 @@ def _approved_destination(path: str | Path, approved_roots: tuple[Path, ...] | N
 
 def _existing_ancestor(path: Path) -> Path:
     current = path
-    while not current.exists() and current != current.parent:
+    while run(["test", "-d", current], check=False).returncode and current != current.parent:
         current = current.parent
-    if not current.exists() or not current.is_dir():
+    if run(["test", "-d", current], check=False).returncode:
         raise SafetyError(f"destination has no existing directory ancestor: {path}")
     return current
 
@@ -83,6 +83,19 @@ def parse_findmnt(document: dict[str, Any]) -> tuple[str, str, str, tuple[str, .
     )
 
 
+def parse_df_capacity(output: str) -> tuple[int, int]:
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    if len(lines) != 2 or len(lines[1]) != 2:
+        raise SafetyError("df did not return exactly one destination capacity record")
+    try:
+        free_bytes, total_bytes = (int(value) for value in lines[1])
+    except ValueError as exc:
+        raise SafetyError("df did not return numeric destination capacity") from exc
+    if free_bytes < 0 or total_bytes <= 0 or free_bytes > total_bytes:
+        raise SafetyError("df returned invalid destination capacity")
+    return free_bytes, total_bytes
+
+
 def inspect_destination(
     path: str | Path, *, approved_roots: tuple[Path, ...] | None = None
 ) -> DestinationFacts:
@@ -92,14 +105,17 @@ def inspect_destination(
         raise SafetyError("destination mount inspection requires Linux")
     require_tool("findmnt")
     result = run(
-        ["findmnt", "--json", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS", "--target", ancestor]
+        [
+            "findmnt", "--json", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS",
+            "--target", ancestor,
+        ]
     )
     source, mountpoint, filesystem, options = parse_findmnt(json.loads(result.stdout))
-    usage = os.statvfs(ancestor)
-    free_bytes = usage.f_bavail * usage.f_frsize
-    total_bytes = usage.f_blocks * usage.f_frsize
+    capacity = run(["df", "--block-size=1", "--output=avail,size", "--", ancestor])
+    free_bytes, total_bytes = parse_df_capacity(capacity.stdout)
     read_only = "ro" in options
-    writable = not read_only and os.access(ancestor, os.W_OK | os.X_OK)
+    writable = not read_only and not run(["test", "-w", ancestor], check=False).returncode
+    writable = writable and not run(["test", "-x", ancestor], check=False).returncode
     return DestinationFacts(
         path=str(destination),
         existing_ancestor=str(ancestor),
