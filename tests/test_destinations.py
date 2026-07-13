@@ -6,6 +6,7 @@ from fnos_rescue.destinations import (
     DestinationFacts,
     assert_destination_ready,
     classify_filesystem,
+    parse_df_capacity,
     parse_findmnt,
     _approved_destination,
 )
@@ -21,21 +22,19 @@ class DestinationTests(unittest.TestCase):
     def test_parses_findmnt_document(self) -> None:
         parsed = parse_findmnt({"filesystems": [{
             "source": "server:/export", "target": "/mnt/out", "fstype": "nfs4",
-            "options": "rw,nosuid,nodev", "fsavail": 1000, "fssize": 2000,
+            "options": "rw,nosuid,nodev",
         }]})
         self.assertEqual(
             parsed,
-            ("server:/export", "/mnt/out", "nfs4", ("rw", "nosuid", "nodev"), 1000, 2000),
+            ("server:/export", "/mnt/out", "nfs4", ("rw", "nosuid", "nodev")),
         )
 
-    def test_rejects_missing_or_invalid_findmnt_capacity(self) -> None:
-        base = {
-            "source": "/dev/sdb1", "target": "/mnt/out", "fstype": "ext4", "options": "rw",
-        }
+    def test_parses_and_rejects_invalid_df_capacity(self) -> None:
+        self.assertEqual(parse_df_capacity("Avail Size\n1000 2000\n"), (1000, 2000))
         with self.assertRaises(SafetyError):
-            parse_findmnt({"filesystems": [base]})
+            parse_df_capacity("Avail Size\n")
         with self.assertRaises(SafetyError):
-            parse_findmnt({"filesystems": [{**base, "fsavail": 3000, "fssize": 2000}]})
+            parse_df_capacity("Avail Size\n3000 2000\n")
 
     def test_destination_must_stay_inside_an_approved_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
