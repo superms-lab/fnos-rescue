@@ -21,9 +21,21 @@ class DestinationTests(unittest.TestCase):
     def test_parses_findmnt_document(self) -> None:
         parsed = parse_findmnt({"filesystems": [{
             "source": "server:/export", "target": "/mnt/out", "fstype": "nfs4",
-            "options": "rw,nosuid,nodev"
+            "options": "rw,nosuid,nodev", "fsavail": 1000, "fssize": 2000,
         }]})
-        self.assertEqual(parsed, ("server:/export", "/mnt/out", "nfs4", ("rw", "nosuid", "nodev")))
+        self.assertEqual(
+            parsed,
+            ("server:/export", "/mnt/out", "nfs4", ("rw", "nosuid", "nodev"), 1000, 2000),
+        )
+
+    def test_rejects_missing_or_invalid_findmnt_capacity(self) -> None:
+        base = {
+            "source": "/dev/sdb1", "target": "/mnt/out", "fstype": "ext4", "options": "rw",
+        }
+        with self.assertRaises(SafetyError):
+            parse_findmnt({"filesystems": [base]})
+        with self.assertRaises(SafetyError):
+            parse_findmnt({"filesystems": [{**base, "fsavail": 3000, "fssize": 2000}]})
 
     def test_destination_must_stay_inside_an_approved_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
