@@ -44,6 +44,24 @@ class JobStoreTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 store.load("../../outside")
 
+    def test_rejects_symlinked_or_mismatched_job_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = JobStore(self.make_case(Path(temporary)))
+            job = store.create("extract", {})
+            record = store.root / job.job_id / "job.json"
+            data = json.loads(record.read_text())
+            data["job_id"] = "job-000000000000"
+            record.write_text(json.dumps(data))
+            with self.assertRaises(Exception):
+                store.load(job.job_id)
+
+            record.unlink()
+            outside = Path(temporary) / "outside.json"
+            outside.write_text(json.dumps({**data, "job_id": job.job_id}))
+            record.symlink_to(outside)
+            with self.assertRaises(Exception):
+                store.load(job.job_id)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,7 @@ an auditable, repeatable workflow instead of a collection of dangerous one-off c
 
 ## Current status
 
-`v0.1.2` is an alpha, Linux-first prerelease extracted from successful real-world FNOS Basic-disk
+`v0.1.3` is an alpha, Linux-first prerelease extracted from successful real-world FNOS Basic-disk
 Btrfs recoveries. It provides:
 
 - device inspection with stable serial reporting;

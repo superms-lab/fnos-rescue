@@ -5,6 +5,20 @@ Versioning.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-13
+
+### Security
+
+- Normalize destination paths without performing an unchecked filesystem resolution on raw Web
+  or CLI input.
+- Locate job records only by enumerating case-owned directories, reject symlinked records, and
+  require the stored job identity to match its validated directory name.
+
+### Validation
+
+- Close all main-branch CodeQL path-injection alerts found during the v0.1.2 prerelease audit and
+  retain the 94-test Linux, package-lifecycle, disposable-disk, and BIOS/UEFI release gates.
+
 ## [0.1.2] - 2026-07-13
 
 ### Added
@@ -139,7 +153,8 @@ Versioning.
 - Validated 54 automated tests, the Web production build, zero known npm vulnerabilities,
   sensitive-data scanning, package construction, and release metadata generation.
 
-[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/superms-lab/fnos-rescue/releases/tag/v0.1.0

@@ -46,7 +46,7 @@ class BtrfsJobTests(unittest.TestCase):
             "cache": {"path": str(cache), "bytes": cache.stat().st_size,
                       "sha256": hashlib.sha256(cache.read_bytes()).hexdigest()},
             "tool": {"path": str(tool), "sha256": hashlib.sha256(tool.read_bytes()).hexdigest(),
-                     "package_version": "0.1.2"},
+                     "package_version": "0.1.3"},
         }))
         store.transition(cache_job, "completed")
         scan_job = store.create("btrfs-root-scan", {"device": "/dev/test", "fsid": self.FSID})
