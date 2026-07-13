@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+install -d -m 0700 /var/lib/fnos-rescue
+if test ! -s /var/lib/fnos-rescue/web.token; then
+  umask 007
+  /usr/bin/python3 -c 'import secrets; print(secrets.token_urlsafe(32))' \
+    > /var/lib/fnos-rescue/web.token
+fi
+chown root:user /var/lib/fnos-rescue/web.token
+chmod 0640 /var/lib/fnos-rescue/web.token

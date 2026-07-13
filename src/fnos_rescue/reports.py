@@ -25,7 +25,7 @@ def case_report(case: str | Path) -> dict[str, Any]:
         "kinds": dict(sorted(kinds.items())),
         "completed_steps": completed_steps,
         "failure_records": failure_records,
-        "ready": bool(jobs) and not any(
-            status in statuses for status in ("queued", "starting", "running", "paused", "failed")
-        ),
+        "ready": bool(jobs)
+        and failure_records == 0
+        and set(statuses) == {"completed"},
     }

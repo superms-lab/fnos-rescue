@@ -1,1 +1,2 @@
-chromium --no-first-run --disable-session-crashed-bubble --app=http://127.0.0.1:8790/ &
+token=$(cat /var/lib/fnos-rescue/web.token)
+chromium --no-first-run --disable-session-crashed-bubble --app="http://127.0.0.1:8790/#token=$token" &

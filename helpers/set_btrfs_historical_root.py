@@ -4,11 +4,12 @@
 This is intended only for a disposable copy-on-write recovery overlay.
 """
 
+import argparse
 import os
 import struct
-import sys
 
 from crc32c_compat import crc32c
+from overlay_safety import require_connected_case_overlay
 
 
 SUPER_SIZE = 4096
@@ -21,19 +22,20 @@ def checksum(block: bytes) -> bytes:
 
 
 def main() -> int:
-    if len(sys.argv) not in (4, 5):
-        print(
-            f"usage: {sys.argv[0]} DEVICE ROOT_BYTENR GENERATION [ROOT_LEVEL]",
-            file=sys.stderr,
-        )
-        return 2
-
-    device = sys.argv[1]
-    root = int(sys.argv[2], 0)
-    generation = int(sys.argv[3], 0)
-    root_level = int(sys.argv[4], 0) if len(sys.argv) == 5 else 1
+    parser = argparse.ArgumentParser()
+    parser.add_argument("device")
+    parser.add_argument("root_bytenr", type=lambda value: int(value, 0))
+    parser.add_argument("generation", type=lambda value: int(value, 0))
+    parser.add_argument("root_level", nargs="?", type=lambda value: int(value, 0), default=1)
+    parser.add_argument("--overlay-state", required=True)
+    args = parser.parse_args()
+    device = args.device
+    root = args.root_bytenr
+    generation = args.generation
+    root_level = args.root_level
     if root_level < 0 or root_level > 8:
         raise ValueError("ROOT_LEVEL must be between 0 and 8")
+    require_connected_case_overlay(device, args.overlay_state)
     fd = os.open(device, os.O_RDWR | os.O_CLOEXEC)
     try:
         source = bytearray(os.pread(fd, SUPER_SIZE, SUPER_OFFSETS[2]))

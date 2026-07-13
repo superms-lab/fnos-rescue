@@ -165,7 +165,7 @@ def command_job_control(args: argparse.Namespace) -> int:
 
 
 def command_serve(args: argparse.Namespace) -> int:
-    serve(args.host, args.port, args.static_dir)
+    serve(args.host, args.port, args.static_dir, args.token_file)
     return 0
 
 
@@ -270,6 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--host", default="127.0.0.1", help="listen address; loopback by default")
     web.add_argument("--port", type=int, default=8790)
     web.add_argument("--static-dir")
+    web.add_argument("--token-file", help="private file containing the Web access token")
     web.set_defaults(func=command_serve)
     return parser
 

@@ -14,7 +14,7 @@ an auditable, repeatable workflow instead of a collection of dangerous one-off c
 
 ## Current status
 
-`v0.1.1` is an alpha, Linux-first prerelease extracted from successful real-world FNOS Basic-disk
+`v0.1.2` is an alpha, Linux-first prerelease extracted from successful real-world FNOS Basic-disk
 Btrfs recoveries. It provides:
 
 - device inspection with stable serial reporting;
@@ -59,6 +59,11 @@ Build the architecture-labelled fnOS archive with `./scripts/build-fnos-package.
 under `/var/apps/fnos-rescue`, supports upgrade rollback and clean uninstall, and includes a
 fixed-command root helper that refuses arbitrary shell execution. `fnos-quiesce-plan` is dry-run
 only and never stops active fnOS services by itself.
+
+The fnOS Web console is loopback-only and requires a private access token. Display it locally with
+`sudo /var/apps/fnos-rescue/bin/fnos-rescue-web-url`; for another computer, use the printed SSH
+port-forward command and enter the token in the browser. Direct LAN listening is intentionally
+refused.
 
 Check the complete runtime before touching a device:
 
@@ -105,7 +110,8 @@ fnos-rescue job-create ./case-001 copy --parameters \
   '{"source_device":"/dev/sda","source_root":"/mnt/recovery-view","destination":"/mnt/output","paths":["Photos/2025"]}'
 ```
 
-The copy executor requires the original physical `source_device`, rejects same-disk destinations,
+The copy executor requires the original physical `source_device`, rechecks the case serial,
+capacity, complete kernel device graph, and read-only state, rejects same-disk destinations,
 absolute selections, path traversal, and symlinks, preserves relative paths, and compares
 source/destination SHA-256 before marking each file complete.
 
@@ -128,22 +134,28 @@ fnos-rescue job-create ./case-001 btrfs-root-scan --parameters \
 fnos-rescue job-run ./case-001 job-0123456789ab --background
 ```
 
-Both jobs require a Linux block device that is already read-only. They collect evidence only and
-never mount, repair, or rewrite a superblock.
+Both jobs require the case source or a read-only partition/MD/LVM/loop layer proven by the kernel
+device graph to belong to that source. They collect evidence only and never mount, repair, or
+rewrite a superblock.
 
 The private Btrfs v7 helper can persist a reusable chunk cache, list a historical filesystem tree,
 and extract one known inode into the private job directory:
 
 ```bash
 fnos-rescue job-create ./case-001 btrfs-chunk-cache --parameters \
-  '{"device":"/dev/loop16"}'
+  '{"device":"/dev/loop16","fsid":"11111111-2222-3333-4444-555555555555"}'
 fnos-rescue job-create ./case-001 btrfs-list --parameters \
   '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456}'
 fnos-rescue job-create ./case-001 btrfs-extract-inode --parameters \
-  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096}'
+  '{"device":"/dev/loop16","chunk_cache":"./case-001/jobs/JOB/chunk-mappings.cache","filesystem_root":123456,"rootid":257,"inode":9001,"expected_size":4096,"expected_sha256":"TRUSTED_INVENTORY_SHA256"}'
 ```
 
-Extraction first lands inside the private case job directory. Moving validated content to a final
+The selected filesystem or subvolume root must exist in the same case's completed
+`root-candidates.json`; its FSID, owner, generation and level are checked again by both the
+orchestrator and private C tool. A chunk cache is accepted only with its case/source/tool SHA-256
+provenance manifest. Extraction first lands inside the private case job directory. Known archives,
+documents, images, databases, text and media are structurally parsed; an opaque format requires a
+trusted inventory SHA-256, otherwise it is retained but reported as unvalidated. Moving validated content to a final
 destination remains a separate `copy` job so physical same-disk checks cannot be bypassed.
 
 Read [the FNOS Btrfs runbook](docs/FNOS-BTRFS.md) before attempting recovery.

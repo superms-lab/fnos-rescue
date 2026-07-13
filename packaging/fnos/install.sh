@@ -27,6 +27,12 @@ trap cleanup EXIT INT TERM
 
 install -d -m 0755 "$APP" "$APP/lib/python3/dist-packages" "$APP/bin"
 install -d -m 0700 /var/lib/fnos-rescue
+if test ! -s /var/lib/fnos-rescue/web.token; then
+  umask 077
+  /usr/bin/python3 -c 'import secrets; print(secrets.token_urlsafe(32))' \
+    > /var/lib/fnos-rescue/web.token
+fi
+chmod 0600 /var/lib/fnos-rescue/web.token
 cp -R "$SOURCE/app/fnos_rescue" "$APP/lib/python3/dist-packages/fnos_rescue"
 install -m 0755 "$SOURCE/app/bin/scan_btrfs_roots" "$APP/bin/scan_btrfs_roots"
 install -m 0755 "$SOURCE/app/bin/fnos-rescue-btrfs" "$APP/bin/fnos-rescue-btrfs"
@@ -42,6 +48,12 @@ cat > "$APP/bin/fnos-rescue-web-url" <<'EOF'
 #!/bin/sh
 echo "FNOS Rescue listens safely on http://127.0.0.1:8790"
 echo "Remote access: ssh -L 8790:127.0.0.1:8790 USER@FNOS_HOST"
+if test -r /var/lib/fnos-rescue/web.token; then
+  printf 'Web access token: '
+  cat /var/lib/fnos-rescue/web.token
+else
+  echo "Run this command with sudo to display the Web access token."
+fi
 EOF
 chmod 0755 "$APP/bin/fnos-rescue-web-url"
 install -m 0644 "$SOURCE/fnos-rescue-web.service" "$APP/fnos-rescue-web.service"

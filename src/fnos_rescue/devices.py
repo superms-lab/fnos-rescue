@@ -24,6 +24,8 @@ class DeviceFacts:
     serial: str | None
     uuid: str | None
     mountpoints: tuple[str, ...]
+    major_minor: str | None = None
+    parent_name: str | None = None
     children: tuple["DeviceFacts", ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -39,7 +41,11 @@ def require_linux() -> None:
 
 def require_block_device(path: str | Path) -> Path:
     require_linux()
-    resolved = Path(path).resolve()
+    requested = os.path.realpath(os.path.expanduser(os.fspath(path)))
+    device_root = os.path.realpath("/dev")
+    if not requested.startswith(device_root + os.sep):
+        raise SafetyError("block device path must resolve inside /dev")
+    resolved = Path(requested)
     try:
         mode = resolved.stat().st_mode
     except FileNotFoundError as exc:
@@ -72,6 +78,8 @@ def _from_lsblk(entry: dict[str, Any]) -> DeviceFacts:
         serial=(entry.get("serial") or "").strip() or None,
         uuid=entry.get("uuid"),
         mountpoints=_mountpoints(entry),
+        major_minor=str(entry.get("maj:min") or "") or None,
+        parent_name=str(entry.get("pkname") or "") or None,
         children=tuple(_from_lsblk(child) for child in entry.get("children") or []),
     )
 
@@ -85,7 +93,7 @@ def inspect_device(path: str | Path) -> DeviceFacts:
             "--json",
             "--bytes",
             "--output",
-            "NAME,PATH,SIZE,RO,TYPE,FSTYPE,MODEL,SERIAL,UUID,MOUNTPOINTS",
+            "NAME,PATH,SIZE,RO,TYPE,FSTYPE,MODEL,SERIAL,UUID,MOUNTPOINTS,MAJ:MIN,PKNAME",
         ]
     )
     document = json.loads(result.stdout)
@@ -117,6 +125,73 @@ def current_read_only(path: str | Path) -> bool:
     require_tool("blockdev")
     result = run(["blockdev", "--getro", str(path)])
     return result.stdout.strip() == "1"
+
+
+def block_identity(path: str | Path) -> str:
+    """Return the kernel major:minor identity for a real block device."""
+    device = require_block_device(path)
+    value = device.stat().st_rdev
+    return f"{os.major(value)}:{os.minor(value)}"
+
+
+def _sysfs_neighbors(node: Path) -> Iterator[Path]:
+    for relation in ("holders", "slaves"):
+        directory = node / relation
+        if directory.is_dir():
+            for linked in directory.iterdir():
+                try:
+                    yield linked.resolve(strict=True)
+                except FileNotFoundError:
+                    continue
+    if (node / "partition").is_file():
+        parent = node.parent
+        if (parent / "dev").is_file():
+            yield parent
+    else:
+        for child in node.iterdir():
+            if child.is_dir() and (child / "partition").is_file():
+                yield child.resolve()
+
+
+def related_block_devices(
+    path: str | Path,
+    *,
+    sys_dev_block: Path = Path("/sys/dev/block"),
+    dev_root: Path = Path("/dev"),
+) -> list[str]:
+    """Return every partition/holder/slave in the source's kernel device graph.
+
+    The graph is deliberately traversed in both directions.  This protects a
+    whole disk, its partitions, and any active MD/LVM/loop holders together.
+    """
+    identity = block_identity(path)
+    entry = sys_dev_block / identity
+    try:
+        start = entry.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise SafetyError(f"kernel device graph is missing for {path}: {identity}") from exc
+    pending = [start]
+    seen: set[Path] = set()
+    while pending:
+        node = pending.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        pending.extend(neighbor for neighbor in _sysfs_neighbors(node) if neighbor not in seen)
+    paths = []
+    for node in seen:
+        dev = node / "dev"
+        if not dev.is_file():
+            raise SafetyError(f"kernel device graph node has no identity: {node}")
+        candidate = dev_root / node.name
+        if not candidate.exists():
+            raise SafetyError(f"kernel device graph node has no device path: {candidate}")
+        paths.append(str(candidate.resolve()))
+    return sorted(set(paths))
+
+
+def related_block_identities(path: str | Path) -> set[str]:
+    return {block_identity(device) for device in related_block_devices(path)}
 
 
 def is_root() -> bool:

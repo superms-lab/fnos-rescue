@@ -24,6 +24,31 @@ def _write_state(store: JobStore, job: RecoveryJob, state: dict[str, Any]) -> Pa
     return target
 
 
+def _overlay_backing(overlay: Path) -> Path:
+    result = run(["qemu-img", "info", "--output=json", overlay])
+    info = json.loads(result.stdout)
+    if info.get("format") != "qcow2":
+        raise RescueError("overlay format is not qcow2")
+    value = info.get("full-backing-filename") or info.get("backing-filename")
+    if not isinstance(value, str) or not value:
+        raise RescueError("overlay has no backing device")
+    backing = Path(value)
+    backing = (backing if backing.is_absolute() else overlay.parent / backing).resolve()
+    backing = require_block_device(backing)
+    assert_read_only(backing)
+    return backing
+
+
+def _nbd_pid(nbd: str) -> int:
+    try:
+        pid = int((Path("/sys/class/block") / Path(nbd).name / "pid").read_text().strip())
+    except (FileNotFoundError, ValueError) as exc:
+        raise RescueError(f"connected NBD has no qemu-nbd owner: {nbd}") from exc
+    if pid <= 0:
+        raise RescueError(f"connected NBD has invalid qemu-nbd owner: {nbd}")
+    return pid
+
+
 def execute_overlay_create(store: JobStore, job: RecoveryJob) -> RecoveryJob:
     backing = require_block_device(str(job.parameters.get("backing_device", "")))
     assert_read_only(backing)
@@ -45,19 +70,40 @@ def execute_overlay_create(store: JobStore, job: RecoveryJob) -> RecoveryJob:
 def execute_overlay_connect(store: JobStore, job: RecoveryJob) -> RecoveryJob:
     overlay = Path(str(job.parameters.get("overlay", ""))).expanduser().resolve()
     nbd = str(job.parameters.get("nbd_device", ""))
-    if not overlay.is_file() or overlay.suffix != ".qcow2":
+    if (
+        not overlay.is_file()
+        or overlay.suffix != ".qcow2"
+        or store.case.resolve() not in overlay.parents
+    ):
         raise RescueError(f"overlay is missing or not QCOW2: {overlay}")
     if not NBD_DEVICE.fullmatch(nbd):
         raise RescueError(f"invalid NBD device: {nbd}")
     require_tool("qemu-nbd")
+    require_tool("qemu-img")
     require_block_device(nbd)
+    backing = _overlay_backing(overlay)
     store.transition(job, "running", current_step="connect-overlay")
     run(["qemu-nbd", "--connect", nbd, overlay])
-    state_path = _write_state(
-        store,
-        job,
-        {"overlay": str(overlay), "nbd_device": nbd, "connected": True},
-    )
+    try:
+        pid = _nbd_pid(nbd)
+        overlay_stat = overlay.stat()
+        state_path = _write_state(
+            store,
+            job,
+            {
+                "state_version": 2,
+                "backing_device": str(backing),
+                "overlay": str(overlay),
+                "overlay_device": overlay_stat.st_dev,
+                "overlay_inode": overlay_stat.st_ino,
+                "nbd_device": nbd,
+                "nbd_pid": pid,
+                "connected": True,
+            },
+        )
+    except (OSError, RescueError):
+        run(["qemu-nbd", "--disconnect", nbd], check=False)
+        raise
     store.complete_step(job, "connect-overlay", {"state": str(state_path), "nbd_device": nbd})
     store.transition(job, "completed")
     return job

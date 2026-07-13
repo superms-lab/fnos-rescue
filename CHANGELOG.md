@@ -5,6 +5,54 @@ Versioning.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-13
+
+### Added
+
+- Add private Web access tokens for all device, case, job, inventory, and recovery APIs while
+  retaining loopback-only listeners and Host/Origin checks.
+- Add case/source/tool/hash provenance manifests for Chunk Cache artifacts and root candidate
+  manifests carrying FSID, owner, generation, level, and physical-copy evidence.
+- Add structural validators for ZIP/Office, gzip, tar, PNG, JPEG, GIF, PDF, SQLite, JSON, XML,
+  text, and media files, with explicit validated, genuine-empty, unvalidated, and invalid states.
+- Add a disposable Linux Btrfs-to-separate-ext4 end-to-end gate that proves the source image stays
+  byte-identical, plus large-output, ENOSPC, restart, cache-corruption, and special-name tests.
+
+### Fixed
+
+- Traverse the complete partition/MD/LVM/loop holder/slave graph by kernel identity before source
+  operations, and reject unknown or physically overlapping local destinations.
+- Require case-owned QCOW2/NBD state, current process identity, overlay inode, backing-file match,
+  and read-only backing before any metadata-writing helper opens a device.
+- Validate forced historical tree blocks inside the private Btrfs tool before use, including FSID,
+  bytenr, owner, generation, and level, and open devices read-only for salvage operations.
+- Bound Chunk Cache record and stripe counts, reject truncation and trailing data, and fsync caches,
+  inventories, and extracted files before reporting success.
+- Encode inventory paths as relative Base64 byte identities so tabs, newlines, Unicode, and invalid
+  UTF-8 cannot corrupt TSV parsing; resume batch extraction by stable rootid/inode/path identity.
+- Stream long-running child stdout/stderr directly to durable job logs, cap returned diagnostics,
+  terminate process groups, and recover stale workers after reboot.
+- Replace path-based copying with descriptor-relative `openat`/`O_NOFOLLOW` traversal, atomic
+  replacement, fsync, and final destination reread; preserve retry safety after interruption.
+- Make verification include empty files and prevent completed-with-errors jobs or any failure
+  manifest from being reported ready.
+
+### Security
+
+- Sandbox fnOS and Live Web services with read-only system paths and narrowly scoped write paths.
+- Reject arbitrary Web filesystem paths, recovery binaries, cache files, devices, non-loopback
+  listeners, and missing/invalid access tokens.
+- Keep all physical source layers read-only and confine metadata reconstruction to proven,
+  case-owned QCOW2 overlays.
+
+### Validation
+
+- Passed 91 automated Python tests on macOS before publication, the React production build, npm
+  high-severity audit, secret scan, Live profile validation, Python/Shell syntax checks, and clean
+  diff checks.
+- Linux private-tool compilation, Debian/fnOS packaging, disposable Btrfs E2E, fnOS lifecycle,
+  and BIOS/UEFI Live ISO boot are required CI/release gates for the v0.1.2 prerelease.
+
 ## [0.1.1] - 2026-07-13
 
 ### Added
@@ -91,6 +139,7 @@ Versioning.
 - Validated 54 automated tests, the Web production build, zero known npm vulnerabilities,
   sensitive-data scanning, package construction, and release metadata generation.
 
-[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/superms-lab/fnos-rescue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/superms-lab/fnos-rescue/releases/tag/v0.1.0

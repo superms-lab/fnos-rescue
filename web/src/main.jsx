@@ -1,61 +1,942 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AlertTriangle, CheckCircle2, FileText, HardDrive, History, LayoutDashboard, Pause, RefreshCw, Settings, ShieldCheck, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  HardDrive,
+  History,
+  LayoutDashboard,
+  Pause,
+  RefreshCw,
+  Settings,
+  ShieldCheck,
+  Square,
+} from "lucide-react";
 import "./style.css";
 import "./empty-state.css";
 
 function Sidebar() {
-  const nav = [[LayoutDashboard, "概览"], [HardDrive, "设备"], [History, "恢复任务"], [FileText, "验证报告"], [Settings, "设置"]];
-  return <aside className="sidebar"><div className="brand"><ShieldCheck/><div><b>FNOS Rescue</b><small>数据恢复控制台</small></div></div><nav aria-label="主导航">{nav.map(([Icon, text], index) => <button type="button" className={index === 0 ? "active" : ""} key={text}><Icon/>{text}</button>)}</nav><p className="safety-note">只读优先<br/><span>任何源盘变更均需序列号确认</span></p></aside>;
+  const nav = [
+    [LayoutDashboard, "概览"],
+    [HardDrive, "设备"],
+    [History, "恢复任务"],
+    [FileText, "验证报告"],
+    [Settings, "设置"],
+  ];
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <ShieldCheck />
+        <div>
+          <b>FNOS Rescue</b>
+          <small>数据恢复控制台</small>
+        </div>
+      </div>
+      <nav aria-label="主导航">
+        {nav.map(([Icon, text], index) => (
+          <button
+            type="button"
+            className={index === 0 ? "active" : ""}
+            key={text}
+          >
+            <Icon />
+            {text}
+          </button>
+        ))}
+      </nav>
+      <p className="safety-note">
+        只读优先
+        <br />
+        <span>任何源盘变更均需序列号确认</span>
+      </p>
+    </aside>
+  );
+}
+
+function AccessGate({ onSubmit }) {
+  const [token, setToken] = useState("");
+  return (
+    <main className="access-gate">
+      <section className="panel">
+        <ShieldCheck />
+        <span className="eyebrow">本机管理员验证</span>
+        <h1>输入 Web 访问令牌</h1>
+        <p>
+          令牌保存在 fnOS 主机的 <code>/var/lib/fnos-rescue/web.token</code>
+          ，可运行{" "}
+          <code>sudo /var/apps/fnos-rescue/bin/fnos-rescue-web-url</code> 查看。
+        </p>
+        <label>
+          访问令牌
+          <input
+            type="password"
+            autoFocus
+            autoComplete="off"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="primary"
+          disabled={token.trim().length < 32}
+          onClick={() => onSubmit(token.trim())}
+        >
+          连接本机恢复服务
+        </button>
+      </section>
+    </main>
+  );
 }
 
 function Workflow({ device, caseInfo, destinationInfo, job }) {
-  const complete = [Boolean(device), Boolean(device?.read_only && caseInfo), Boolean(destinationInfo), Boolean(job)];
-  return <><section className="steps" aria-label="恢复流程">{["选择源盘", "只读保护", "选择目标", "开始恢复"].map((text, index) => <div className={complete[index] ? "done" : ""} key={text}><span>{index + 1}</span><b>{text}</b></div>)}</section>{device && !device.read_only && <div className="warning"><AlertTriangle/>源盘尚未只读保护。创建案例或读取元数据前必须先完成保护。</div>}</>;
+  const complete = [
+    Boolean(device),
+    Boolean(device?.read_only && caseInfo),
+    Boolean(destinationInfo),
+    Boolean(job),
+  ];
+  return (
+    <>
+      <section className="steps" aria-label="恢复流程">
+        {["选择源盘", "只读保护", "选择目标", "开始恢复"].map((text, index) => (
+          <div className={complete[index] ? "done" : ""} key={text}>
+            <span>{index + 1}</span>
+            <b>{text}</b>
+          </div>
+        ))}
+      </section>
+      {device && !device.read_only && (
+        <div className="warning">
+          <AlertTriangle />
+          源盘尚未只读保护。创建案例或读取元数据前必须先完成保护。
+        </div>
+      )}
+    </>
+  );
 }
 
 function DeviceTable({ devices, selected, onSelect, onRefresh, loading }) {
-  return <section className="panel devices"><h2>设备列表 <button type="button" className="refresh" onClick={onRefresh} disabled={loading}><RefreshCw className={loading ? "spin" : ""}/>{loading ? "扫描中" : "刷新"}</button></h2><div className="table-scroll"><table><thead><tr><th scope="col"><span className="sr-only">选择</span></th><th scope="col">设备</th><th scope="col">容量</th><th scope="col">文件系统</th><th scope="col">状态</th><th scope="col">挂载点</th></tr></thead><tbody>{devices.length === 0 ? <tr><td colSpan="6" className="empty-state">未发现可操作的真实块设备。请确认服务运行在 Linux/fnOS，并检查服务日志。</td></tr> : devices.map((device, index) => <tr className={selected === index ? "selected" : ""} onClick={() => onSelect(index)} key={device.path}><td><input aria-label={`选择 ${device.path}`} type="radio" name="source" checked={selected === index} onChange={() => onSelect(index)}/></td><td><code>{device.path}</code></td><td>{device.size}</td><td>{device.filesystem || "未知"}</td><td className={device.status.includes("损坏") ? "bad" : "good"}>{device.status.includes("损坏") ? <AlertTriangle/> : <CheckCircle2/>}{device.status}</td><td>{device.mountpoints?.join(", ") || "—"}</td></tr>)}</tbody></table></div></section>;
+  return (
+    <section className="panel devices">
+      <h2>
+        设备列表{" "}
+        <button
+          type="button"
+          className="refresh"
+          onClick={onRefresh}
+          disabled={loading}
+        >
+          <RefreshCw className={loading ? "spin" : ""} />
+          {loading ? "扫描中" : "刷新"}
+        </button>
+      </h2>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="sr-only">选择</span>
+              </th>
+              <th scope="col">设备</th>
+              <th scope="col">容量</th>
+              <th scope="col">文件系统</th>
+              <th scope="col">状态</th>
+              <th scope="col">挂载点</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="empty-state">
+                  未发现可操作的真实块设备。请确认服务运行在
+                  Linux/fnOS，并检查服务日志。
+                </td>
+              </tr>
+            ) : (
+              devices.map((device, index) => (
+                <tr
+                  className={selected === index ? "selected" : ""}
+                  onClick={() => onSelect(index)}
+                  key={device.path}
+                >
+                  <td>
+                    <input
+                      aria-label={`选择 ${device.path}`}
+                      type="radio"
+                      name="source"
+                      checked={selected === index}
+                      onChange={() => onSelect(index)}
+                    />
+                  </td>
+                  <td>
+                    <code>{device.path}</code>
+                  </td>
+                  <td>{device.size}</td>
+                  <td>{device.filesystem || "未知"}</td>
+                  <td
+                    className={device.status.includes("损坏") ? "bad" : "good"}
+                  >
+                    {device.status.includes("损坏") ? (
+                      <AlertTriangle />
+                    ) : (
+                      <CheckCircle2 />
+                    )}
+                    {device.status}
+                  </td>
+                  <td>{device.mountpoints?.join(", ") || "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function DeviceDetail({ device, onProtect, onCreateCase, live, caseInfo }) {
   if (!device) return null;
-  return <section className="panel detail"><h2>设备详情</h2><dl><dt>设备路径</dt><dd><code>{device.path}</code></dd><dt>型号</dt><dd>{device.model || "未知"}</dd><dt>序列号</dt><dd>{device.serial || "不可用"}</dd><dt>容量</dt><dd>{device.size}</dd><dt>只读状态</dt><dd><span className={`badge ${device.read_only ? "safe" : "warn"}`}>{device.read_only ? "已启用" : "未启用"}</span></dd></dl><button type="button" className="primary" onClick={onProtect} disabled={!device.serial || device.read_only}><ShieldCheck/>{device.read_only ? "源盘已保护" : "启用只读保护"}</button><button type="button" onClick={onCreateCase} disabled={!live || !device.read_only || Boolean(caseInfo)}>{caseInfo ? `案例 ${caseInfo.case_id}` : "创建恢复案例"}</button><small className="disabled-hint">{!live ? "当前平台不支持真实块设备操作" : !device.read_only ? "只读保护后开放" : caseInfo ? "案例已安全保存" : "已满足创建条件"}</small></section>;
+  return (
+    <section className="panel detail">
+      <h2>设备详情</h2>
+      <dl>
+        <dt>设备路径</dt>
+        <dd>
+          <code>{device.path}</code>
+        </dd>
+        <dt>型号</dt>
+        <dd>{device.model || "未知"}</dd>
+        <dt>序列号</dt>
+        <dd>{device.serial || "不可用"}</dd>
+        <dt>容量</dt>
+        <dd>{device.size}</dd>
+        <dt>只读状态</dt>
+        <dd>
+          <span className={`badge ${device.read_only ? "safe" : "warn"}`}>
+            {device.read_only ? "已启用" : "未启用"}
+          </span>
+        </dd>
+      </dl>
+      <button
+        type="button"
+        className="primary"
+        onClick={onProtect}
+        disabled={!device.serial || device.read_only}
+      >
+        <ShieldCheck />
+        {device.read_only ? "源盘已保护" : "启用只读保护"}
+      </button>
+      <button
+        type="button"
+        onClick={onCreateCase}
+        disabled={!live || !device.read_only || Boolean(caseInfo)}
+      >
+        {caseInfo ? `案例 ${caseInfo.case_id}` : "创建恢复案例"}
+      </button>
+      <small className="disabled-hint">
+        {!live
+          ? "当前平台不支持真实块设备操作"
+          : !device.read_only
+            ? "只读保护后开放"
+            : caseInfo
+              ? "案例已安全保存"
+              : "已满足创建条件"}
+      </small>
+    </section>
+  );
 }
 
-function GuidedRecovery({ device, caseInfo, destination, setDestination, onInspect, destinationInfo, onCreateJob, job, onControl, message }) {
-  return <section className="panel task guided"><div className="section-heading"><div><span className="eyebrow">引导恢复</span><h2>{caseInfo ? caseInfo.case_id : "等待创建案例"}</h2></div>{job && <span className="badge safe">{job.status}</span>}</div><div className="form-grid"><label>目标目录<input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="/mnt/recovery-output"/></label><button type="button" onClick={onInspect} disabled={!caseInfo || !destination}>验证目标</button><label>恢复视图目录<input id="source-root" placeholder="/mnt/recovery-view"/></label><label>选择路径<input id="paths" placeholder="Photos/2025, Documents"/></label></div>{destinationInfo && <p className="success-line"><CheckCircle2/>目标已验证：{destinationInfo.kind} · 可用 {_formatBytes(destinationInfo.free_bytes)}</p>}<div className="job-actions"><button type="button" className="primary" onClick={onCreateJob} disabled={!destinationInfo || Boolean(job)}>创建并启动复制任务</button>{job && <><button type="button" onClick={() => onControl("pause")}><Pause/>暂停</button><button type="button" onClick={() => onControl("resume")}>继续</button><button type="button" className="danger" onClick={() => onControl("cancel")}><Square/>取消</button></>}</div>{message && <p className="form-message" role="status">{message}</p>}<small className="demo-label">任务执行沿用核心层的同盘拒绝、路径越界拒绝和逐文件 SHA-256 校验。</small></section>;
+function GuidedRecovery({
+  device,
+  caseInfo,
+  destination,
+  setDestination,
+  onInspect,
+  destinationInfo,
+  onCreateJob,
+  job,
+  onControl,
+  message,
+}) {
+  return (
+    <section className="panel task guided">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">引导恢复</span>
+          <h2>{caseInfo ? caseInfo.case_id : "等待创建案例"}</h2>
+        </div>
+        {job && <span className="badge safe">{job.status}</span>}
+      </div>
+      <div className="form-grid">
+        <label>
+          目标目录
+          <input
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="/mnt/recovery-output"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={onInspect}
+          disabled={!caseInfo || !destination}
+        >
+          验证目标
+        </button>
+        <label>
+          恢复视图目录
+          <input id="source-root" placeholder="/mnt/recovery-view" />
+        </label>
+        <label>
+          选择路径
+          <input id="paths" placeholder="Photos/2025, Documents" />
+        </label>
+      </div>
+      {destinationInfo && (
+        <p className="success-line">
+          <CheckCircle2 />
+          目标已验证：{destinationInfo.kind} · 可用{" "}
+          {_formatBytes(destinationInfo.free_bytes)}
+        </p>
+      )}
+      <div className="job-actions">
+        <button
+          type="button"
+          className="primary"
+          onClick={onCreateJob}
+          disabled={!destinationInfo || Boolean(job)}
+        >
+          创建并启动复制任务
+        </button>
+        {job && (
+          <>
+            <button type="button" onClick={() => onControl("pause")}>
+              <Pause />
+              暂停
+            </button>
+            <button type="button" onClick={() => onControl("resume")}>
+              继续
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={() => onControl("cancel")}
+            >
+              <Square />
+              取消
+            </button>
+          </>
+        )}
+      </div>
+      {message && (
+        <p className="form-message" role="status">
+          {message}
+        </p>
+      )}
+      <small className="demo-label">
+        任务执行沿用核心层的同盘拒绝、路径越界拒绝和逐文件 SHA-256 校验。
+      </small>
+    </section>
+  );
 }
 
-function RecoveryPipeline({ caseInfo, device, onStart, job, inventory, selectedPaths, setSelectedPaths, fsid, setFsid, fsRoot, setFsRoot }) {
-  const toggle = (path) => setSelectedPaths((items) => items.includes(path) ? items.filter((item) => item !== path) : [...items, path]);
-  return <section className="panel pipeline"><div className="section-heading"><div><span className="eyebrow">Btrfs 恢复流水线</span><h2>证据 → 历史树 → 选择提取</h2></div>{job && <span className="badge safe">{job.kind} · {job.status}</span>}</div><div className="pipeline-inputs"><label>文件系统 FSID<input value={fsid} onChange={(e) => setFsid(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label><label>历史 filesystem root<input value={fsRoot} onChange={(e) => setFsRoot(e.target.value)} inputMode="numeric" placeholder="逻辑地址"/></label></div><div className="pipeline-actions"><button type="button" disabled={!caseInfo} onClick={() => onStart("btrfs-probe", { device: device.path })}>1. 超级块证据</button><button type="button" disabled={!caseInfo || !fsid} onClick={() => onStart("btrfs-root-scan", { device: device.path, fsid })}>2. 扫描历史根</button><button type="button" disabled={!caseInfo} onClick={() => onStart("btrfs-chunk-cache", { device: device.path })}>3. 生成 Chunk Cache</button><button type="button" disabled={!caseInfo || !fsRoot} onClick={() => onStart("btrfs-list", { device: device.path, filesystem_root: Number(fsRoot) })}>4. 列出历史目录</button></div>{inventory.length > 0 && <div className="inventory"><h3>历史目录与文件</h3>{inventory.slice(0, 500).map((item) => <label key={`${item.rootid}-${item.inode}-${item.path}`}><input type="checkbox" checked={selectedPaths.includes(item.path)} onChange={() => toggle(item.path)}/><span>{item.path}</span><small>{item.size || item.expected_size || "?"} bytes</small></label>)}</div>}<button type="button" className="primary extract" disabled={!selectedPaths.length} onClick={() => onStart("btrfs-extract-batch", { device: device.path, filesystem_root: Number(fsRoot), items: inventory.filter((item) => selectedPaths.includes(item.path)).map((item) => ({ path: item.path, rootid: Number(item.rootid), inode: Number(item.inode), expected_size: Number(item.size || item.expected_size) })) })}>提取已选择的 {selectedPaths.length} 项</button></section>;
+function RecoveryPipeline({
+  caseInfo,
+  device,
+  onStart,
+  job,
+  inventory,
+  selectedPaths,
+  setSelectedPaths,
+  fsid,
+  setFsid,
+  fsRoot,
+  setFsRoot,
+}) {
+  const toggle = (path) =>
+    setSelectedPaths((items) =>
+      items.includes(path)
+        ? items.filter((item) => item !== path)
+        : [...items, path],
+    );
+  return (
+    <section className="panel pipeline">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Btrfs 恢复流水线</span>
+          <h2>证据 → 历史树 → 选择提取</h2>
+        </div>
+        {job && (
+          <span className="badge safe">
+            {job.kind} · {job.status}
+          </span>
+        )}
+      </div>
+      <div className="pipeline-inputs">
+        <label>
+          文件系统 FSID
+          <input
+            value={fsid}
+            onChange={(e) => setFsid(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          />
+        </label>
+        <label>
+          历史 filesystem root
+          <input
+            value={fsRoot}
+            onChange={(e) => setFsRoot(e.target.value)}
+            inputMode="numeric"
+            placeholder="逻辑地址"
+          />
+        </label>
+      </div>
+      <div className="pipeline-actions">
+        <button
+          type="button"
+          disabled={!caseInfo}
+          onClick={() => onStart("btrfs-probe", { device: device.path })}
+        >
+          1. 超级块证据
+        </button>
+        <button
+          type="button"
+          disabled={!caseInfo || !fsid}
+          onClick={() =>
+            onStart("btrfs-root-scan", { device: device.path, fsid })
+          }
+        >
+          2. 扫描历史根
+        </button>
+        <button
+          type="button"
+          disabled={!caseInfo}
+          onClick={() => onStart("btrfs-chunk-cache", { device: device.path })}
+        >
+          3. 生成 Chunk Cache
+        </button>
+        <button
+          type="button"
+          disabled={!caseInfo || !fsRoot}
+          onClick={() =>
+            onStart("btrfs-list", {
+              device: device.path,
+              filesystem_root: Number(fsRoot),
+            })
+          }
+        >
+          4. 列出历史目录
+        </button>
+      </div>
+      {inventory.length > 0 && (
+        <div className="inventory">
+          <h3>历史目录与文件</h3>
+          {inventory.slice(0, 500).map((item) => (
+            <label key={`${item.rootid}-${item.inode}-${item.path}`}>
+              <input
+                type="checkbox"
+                checked={selectedPaths.includes(item.path)}
+                onChange={() => toggle(item.path)}
+              />
+              <span>{item.path}</span>
+              <small>{item.size || item.expected_size || "?"} bytes</small>
+            </label>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className="primary extract"
+        disabled={!selectedPaths.length}
+        onClick={() =>
+          onStart("btrfs-extract-batch", {
+            device: device.path,
+            filesystem_root: Number(fsRoot),
+            items: inventory
+              .filter((item) => selectedPaths.includes(item.path))
+              .map((item) => ({
+                path: item.path,
+                rootid: Number(item.rootid),
+                inode: Number(item.inode),
+                expected_size: Number(item.size || item.expected_size),
+              })),
+          })
+        }
+      >
+        提取已选择的 {selectedPaths.length} 项
+      </button>
+    </section>
+  );
 }
 
-function _formatBytes(value) { return `${(Number(value || 0) / 1e9).toFixed(1)} GB`; }
+function _formatBytes(value) {
+  return `${(Number(value || 0) / 1e9).toFixed(1)} GB`;
+}
 
-function Summary({ detail }) { const failures = detail?.failures || []; const events = detail?.events || []; return <section className="panel summary"><h2>真实任务状态</h2><p>任务状态 <b>{detail?.job?.status || "尚未启动"}</b></p><p>完成步骤 <b>{detail?.job?.completed_steps?.length || 0}</b></p><p className={failures.length ? "bad" : "good"}>失败记录 <b>{failures.length}</b></p><p>进度事件 <b>{events.length}</b></p><small className="demo-label">数据来自案例 JSONL，不显示演示数字</small></section>; }
+function Summary({ detail }) {
+  const failures = detail?.failures || [];
+  const events = detail?.events || [];
+  return (
+    <section className="panel summary">
+      <h2>真实任务状态</h2>
+      <p>
+        任务状态 <b>{detail?.job?.status || "尚未启动"}</b>
+      </p>
+      <p>
+        完成步骤 <b>{detail?.job?.completed_steps?.length || 0}</b>
+      </p>
+      <p className={failures.length ? "bad" : "good"}>
+        失败记录 <b>{failures.length}</b>
+      </p>
+      <p>
+        进度事件 <b>{events.length}</b>
+      </p>
+      <small className="demo-label">数据来自案例 JSONL，不显示演示数字</small>
+    </section>
+  );
+}
 
 function ConfirmModal({ device, busy, error, onClose, onConfirm }) {
   const [serial, setSerial] = useState("");
   const matches = serial.trim() === device.serial;
-  return <div className="overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">确认源盘身份</h2><div className="warning"><AlertTriangle/>此操作会把设备及其子设备切换为只读。</div><p>设备：<code>{device.path}</code><br/>序列号：<strong>{device.serial}</strong></p><label htmlFor="serial-confirm">手动输入完整序列号<input id="serial-confirm" autoFocus value={serial} onChange={(event) => setSerial(event.target.value)} autoComplete="off" placeholder="输入上方序列号"/></label>{error && <p className="form-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose} disabled={busy}>取消</button><button type="button" className="primary" disabled={!matches || busy} onClick={() => onConfirm(serial)}>{busy ? "正在验证…" : "确认并启用"}</button></footer></div></div>;
+  return (
+    <div
+      className="overlay"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+      >
+        <h2 id="confirm-title">确认源盘身份</h2>
+        <div className="warning">
+          <AlertTriangle />
+          此操作会把设备及其子设备切换为只读。
+        </div>
+        <p>
+          设备：<code>{device.path}</code>
+          <br />
+          序列号：<strong>{device.serial}</strong>
+        </p>
+        <label htmlFor="serial-confirm">
+          手动输入完整序列号
+          <input
+            id="serial-confirm"
+            autoFocus
+            value={serial}
+            onChange={(event) => setSerial(event.target.value)}
+            autoComplete="off"
+            placeholder="输入上方序列号"
+          />
+        </label>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <footer>
+          <button type="button" onClick={onClose} disabled={busy}>
+            取消
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!matches || busy}
+            onClick={() => onConfirm(serial)}
+          >
+            {busy ? "正在验证…" : "确认并启用"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
 }
 
 function App() {
-  const [devices, setDevices] = useState([]); const [selected, setSelected] = useState(0); const [loading, setLoading] = useState(false); const [connected, setConnected] = useState(false); const [connectionError, setConnectionError] = useState(""); const [modal, setModal] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [environment, setEnvironment] = useState({ platform: "未知", hostname: "—", user: "—", live: false }); const [caseInfo, setCaseInfo] = useState(null); const [destination, setDestination] = useState(""); const [destinationInfo, setDestinationInfo] = useState(null); const [job, setJob] = useState(null); const [jobDetail, setJobDetail] = useState(null); const [message, setMessage] = useState(""); const [csrfToken, setCsrfToken] = useState(""); const [inventory, setInventory] = useState([]); const [selectedPaths, setSelectedPaths] = useState([]); const [fsid, setFsid] = useState(""); const [fsRoot, setFsRoot] = useState(""); const [chunkCache, setChunkCache] = useState("");
+  const [devices, setDevices] = useState([]);
+  const [selected, setSelected] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [modal, setModal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [environment, setEnvironment] = useState({
+    platform: "未知",
+    hostname: "—",
+    user: "—",
+    live: false,
+  });
+  const [caseInfo, setCaseInfo] = useState(null);
+  const [destination, setDestination] = useState("");
+  const [destinationInfo, setDestinationInfo] = useState(null);
+  const [job, setJob] = useState(null);
+  const [jobDetail, setJobDetail] = useState(null);
+  const [message, setMessage] = useState("");
+  const [accessToken, setAccessToken] = useState(() => {
+    const fragment =
+      new URLSearchParams(window.location.hash.slice(1)).get("token") || "";
+    const token =
+      fragment || window.sessionStorage.getItem("fnos-rescue-token") || "";
+    if (fragment) {
+      window.sessionStorage.setItem("fnos-rescue-token", fragment);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    return token;
+  });
+  const [inventory, setInventory] = useState([]);
+  const [selectedPaths, setSelectedPaths] = useState([]);
+  const [fsid, setFsid] = useState("");
+  const [fsRoot, setFsRoot] = useState("");
+  const [chunkCache, setChunkCache] = useState("");
   const device = useMemo(() => devices[selected], [devices, selected]);
-  async function refresh() { setLoading(true); setConnectionError(""); try { const response = await fetch("/api/devices"); if (!response.ok) throw new Error(`设备 API 返回 ${response.status}`); const data = await response.json(); setCsrfToken(data.csrf_token || ""); setDevices(Array.isArray(data.devices) ? data.devices : []); setEnvironment(data.environment || { platform: "未知", hostname: "—", user: "—", live: false }); setConnected(true); setSelected(0); } catch (caught) { setDevices([]); setConnected(false); setConnectionError(`无法连接本机 FNOS Rescue 服务：${caught.message}`); } finally { setLoading(false); } }
-  useEffect(() => { refresh(); }, []);
-  useEffect(() => { if (!job?.job_id || !caseInfo?.case_id) return undefined; let stopped = false; const poll = async () => { try { const response = await fetch(`/api/job-status?case=${encodeURIComponent(caseInfo.case_id)}&job=${encodeURIComponent(job.job_id)}`); const detail = await response.json(); if (!response.ok) throw new Error(detail.error); if (stopped) return; setJob(detail.job); setJobDetail(detail); const artifactEvent = [...detail.events].reverse().find((event) => event.data?.artifact); if (detail.job.kind === "btrfs-chunk-cache" && artifactEvent) setChunkCache(artifactEvent.data.artifact); if (detail.job.kind === "btrfs-list" && ["completed", "completed_with_errors"].includes(detail.job.status)) { const listResponse = await fetch(`/api/inventory?case=${encodeURIComponent(caseInfo.case_id)}&job=${encodeURIComponent(job.job_id)}`); const list = await listResponse.json(); if (listResponse.ok && !stopped) setInventory(list.items); } } catch (caught) { if (!stopped) setMessage(caught.message); } }; poll(); const timer = setInterval(poll, 2000); return () => { stopped = true; clearInterval(timer); }; }, [job?.job_id, caseInfo?.case_id]);
-  async function protect(serial) { setBusy(true); setError(""); try { const data = await post("/api/protect", { device: device.path, serial }); setDevices((items) => items.map((item) => item.path === device.path ? { ...item, read_only: true } : item)); setModal(false); } catch (caught) { setError(caught.message); } finally { setBusy(false); } }
-  async function post(path, body) { const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-FNOS-Token": csrfToken }, body: JSON.stringify(body) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "操作失败"); return data; }
-  async function createCase() { try { setMessage("正在创建案例…"); const data = await post("/api/cases", { device: device.path, serial: device.serial, filesystem: device.filesystem }); setCaseInfo(data); setMessage("恢复案例已创建。"); } catch (e) { setMessage(e.message); } }
-  async function inspectTarget() { try { const data = await post("/api/destination", { path: destination, source_device: device.path }); setDestinationInfo(data); setMessage("目标目录验证通过。"); } catch (e) { setDestinationInfo(null); setMessage(e.message); } }
-  async function createJob() { try { const sourceRoot = document.getElementById("source-root").value; const paths = document.getElementById("paths").value.split(",").map(x => x.trim()).filter(Boolean); const created = await post("/api/jobs", { case_id: caseInfo.case_id, kind: "copy", parameters: { source_device: device.path, source_root: sourceRoot, destination, paths } }); await post("/api/jobs/start", { case_id: caseInfo.case_id, job_id: created.job_id }); setJob({ ...created, status: "starting" }); setMessage("复制任务已在后台启动。"); } catch (e) { setMessage(e.message); } }
-  async function startRecovery(kind, parameters) { try { if (["btrfs-list", "btrfs-extract-batch"].includes(kind) && !chunkCache) throw new Error("请先完成 Chunk Cache 任务"); const finalParameters = ["btrfs-list", "btrfs-extract-batch"].includes(kind) ? { ...parameters, chunk_cache: chunkCache } : parameters; const created = await post("/api/jobs", { case_id: caseInfo.case_id, kind, parameters: finalParameters }); await post("/api/jobs/start", { case_id: caseInfo.case_id, job_id: created.job_id }); setJob({ ...created, status: "starting" }); setJobDetail(null); setMessage(`${kind} 已启动。`); } catch (e) { setMessage(e.message); } }
-  async function control(action) { try { const data = await post("/api/jobs/control", { case_id: caseInfo.case_id, job_id: job.job_id, action }); if (action === "resume") await post("/api/jobs/start", { case_id: caseInfo.case_id, job_id: job.job_id }); setJob({ ...data, status: action === "resume" ? "starting" : data.status }); setMessage(`任务操作已提交：${action}`); } catch (e) { setMessage(e.message); } }
-  return <div className="app"><Sidebar/><main><header><div><span className="eyebrow">安全恢复工作台</span><h1>数据恢复控制台</h1></div><p>{connected ? <CheckCircle2/> : <AlertTriangle/>} {connected ? "本机服务已连接" : "本机服务未连接"}<span/>主机：{environment.hostname}<span/>平台：{environment.platform}</p></header>{connectionError && <div className="warning"><AlertTriangle/>{connectionError}</div>}<Workflow device={device} caseInfo={caseInfo} destinationInfo={destinationInfo} job={job}/><div className="grid"><DeviceTable devices={devices} selected={selected} onSelect={(value) => { setSelected(value); setCaseInfo(null); setDestinationInfo(null); setJob(null); setJobDetail(null); setInventory([]); setSelectedPaths([]); }} onRefresh={refresh} loading={loading}/><DeviceDetail device={device} live={environment.live} caseInfo={caseInfo} onCreateCase={createCase} onProtect={() => { setError(""); setModal(true); }}/><RecoveryPipeline caseInfo={caseInfo} device={device} onStart={startRecovery} job={job} inventory={inventory} selectedPaths={selectedPaths} setSelectedPaths={setSelectedPaths} fsid={fsid} setFsid={setFsid} fsRoot={fsRoot} setFsRoot={setFsRoot}/><Summary detail={jobDetail}/><GuidedRecovery device={device} caseInfo={caseInfo} destination={destination} setDestination={setDestination} onInspect={inspectTarget} destinationInfo={destinationInfo} onCreateJob={createJob} job={job} onControl={control} message={message}/></div></main>{modal && device && <ConfirmModal device={device} busy={busy} error={error} onClose={() => setModal(false)} onConfirm={protect}/>}</div>;
+  async function refresh(token = accessToken) {
+    if (!token) return;
+    setLoading(true);
+    setConnectionError("");
+    try {
+      const response = await fetch("/api/devices", {
+        headers: { "X-FNOS-Token": token },
+      });
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? "访问令牌无效"
+            : `设备 API 返回 ${response.status}`,
+        );
+      const data = await response.json();
+      setDevices(Array.isArray(data.devices) ? data.devices : []);
+      setEnvironment(
+        data.environment || {
+          platform: "未知",
+          hostname: "—",
+          user: "—",
+          live: false,
+        },
+      );
+      setConnected(true);
+      setSelected(0);
+    } catch (caught) {
+      setDevices([]);
+      setConnected(false);
+      setConnectionError(`无法连接本机 FNOS Rescue 服务：${caught.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    refresh();
+  }, [accessToken]);
+  useEffect(() => {
+    if (!job?.job_id || !caseInfo?.case_id || !accessToken) return undefined;
+    let stopped = false;
+    const headers = { "X-FNOS-Token": accessToken };
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/job-status?case=${encodeURIComponent(caseInfo.case_id)}&job=${encodeURIComponent(job.job_id)}`,
+          { headers },
+        );
+        const detail = await response.json();
+        if (!response.ok) throw new Error(detail.error);
+        if (stopped) return;
+        setJob(detail.job);
+        setJobDetail(detail);
+        const artifactEvent = [...detail.events]
+          .reverse()
+          .find((event) => event.data?.artifact);
+        if (detail.job.kind === "btrfs-chunk-cache" && artifactEvent)
+          setChunkCache(artifactEvent.data.artifact);
+        if (
+          detail.job.kind === "btrfs-list" &&
+          ["completed", "completed_with_errors"].includes(detail.job.status)
+        ) {
+          const listResponse = await fetch(
+            `/api/inventory?case=${encodeURIComponent(caseInfo.case_id)}&job=${encodeURIComponent(job.job_id)}`,
+            { headers },
+          );
+          const list = await listResponse.json();
+          if (listResponse.ok && !stopped) setInventory(list.items);
+        }
+      } catch (caught) {
+        if (!stopped) setMessage(caught.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [job?.job_id, caseInfo?.case_id, accessToken]);
+  async function protect(serial) {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await post("/api/protect", { device: device.path, serial });
+      setDevices((items) =>
+        items.map((item) =>
+          item.path === device.path ? { ...item, read_only: true } : item,
+        ),
+      );
+      setModal(false);
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function post(path, body) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-FNOS-Token": accessToken,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "操作失败");
+    return data;
+  }
+  async function createCase() {
+    try {
+      setMessage("正在创建案例…");
+      const data = await post("/api/cases", {
+        device: device.path,
+        serial: device.serial,
+        filesystem: device.filesystem,
+      });
+      setCaseInfo(data);
+      setMessage("恢复案例已创建。");
+    } catch (e) {
+      setMessage(e.message);
+    }
+  }
+  async function inspectTarget() {
+    try {
+      const data = await post("/api/destination", {
+        case_id: caseInfo.case_id,
+        path: destination,
+        source_device: device.path,
+      });
+      setDestinationInfo(data);
+      setMessage("目标目录验证通过。");
+    } catch (e) {
+      setDestinationInfo(null);
+      setMessage(e.message);
+    }
+  }
+  async function createJob() {
+    try {
+      const sourceRoot = document.getElementById("source-root").value;
+      const paths = document
+        .getElementById("paths")
+        .value.split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const created = await post("/api/jobs", {
+        case_id: caseInfo.case_id,
+        kind: "copy",
+        parameters: {
+          source_device: device.path,
+          source_root: sourceRoot,
+          destination,
+          paths,
+        },
+      });
+      await post("/api/jobs/start", {
+        case_id: caseInfo.case_id,
+        job_id: created.job_id,
+      });
+      setJob({ ...created, status: "starting" });
+      setMessage("复制任务已在后台启动。");
+    } catch (e) {
+      setMessage(e.message);
+    }
+  }
+  async function startRecovery(kind, parameters) {
+    try {
+      if (["btrfs-root-scan", "btrfs-chunk-cache"].includes(kind) && !fsid)
+        throw new Error("请先输入 Btrfs FSID");
+      if (["btrfs-list", "btrfs-extract-batch"].includes(kind) && !chunkCache)
+        throw new Error("请先完成 Chunk Cache 任务");
+      let finalParameters =
+        kind === "btrfs-chunk-cache" ? { ...parameters, fsid } : parameters;
+      if (["btrfs-list", "btrfs-extract-batch"].includes(kind))
+        finalParameters = { ...parameters, chunk_cache: chunkCache };
+      if (kind === "btrfs-extract-batch") {
+        finalParameters.items = parameters.items.map((item) => {
+          const source = inventory.find(
+            (candidate) => candidate.path === item.path,
+          );
+          return {
+            ...item,
+            path_b64: source?.path_b64,
+            type: source?.type,
+            expected_sha256: source?.sha256 || undefined,
+          };
+        });
+      }
+      const created = await post("/api/jobs", {
+        case_id: caseInfo.case_id,
+        kind,
+        parameters: finalParameters,
+      });
+      await post("/api/jobs/start", {
+        case_id: caseInfo.case_id,
+        job_id: created.job_id,
+      });
+      setJob({ ...created, status: "starting" });
+      setJobDetail(null);
+      setMessage(`${kind} 已启动。`);
+    } catch (e) {
+      setMessage(e.message);
+    }
+  }
+  async function control(action) {
+    try {
+      const data = await post("/api/jobs/control", {
+        case_id: caseInfo.case_id,
+        job_id: job.job_id,
+        action,
+      });
+      if (action === "resume")
+        await post("/api/jobs/start", {
+          case_id: caseInfo.case_id,
+          job_id: job.job_id,
+        });
+      setJob({
+        ...data,
+        status: action === "resume" ? "starting" : data.status,
+      });
+      setMessage(`任务操作已提交：${action}`);
+    } catch (e) {
+      setMessage(e.message);
+    }
+  }
+  if (!accessToken)
+    return (
+      <AccessGate
+        onSubmit={(token) => {
+          window.sessionStorage.setItem("fnos-rescue-token", token);
+          setAccessToken(token);
+        }}
+      />
+    );
+  return (
+    <div className="app">
+      <Sidebar />
+      <main>
+        <header>
+          <div>
+            <span className="eyebrow">安全恢复工作台</span>
+            <h1>数据恢复控制台</h1>
+          </div>
+          <p>
+            {connected ? <CheckCircle2 /> : <AlertTriangle />}{" "}
+            {connected ? "本机服务已连接" : "本机服务未连接"}
+            <span />
+            主机：{environment.hostname}
+            <span />
+            平台：{environment.platform}
+          </p>
+        </header>
+        {connectionError && (
+          <div className="warning">
+            <AlertTriangle />
+            {connectionError}
+            <button
+              type="button"
+              onClick={() => {
+                window.sessionStorage.removeItem("fnos-rescue-token");
+                setAccessToken("");
+              }}
+            >
+              重新输入令牌
+            </button>
+          </div>
+        )}
+        <Workflow
+          device={device}
+          caseInfo={caseInfo}
+          destinationInfo={destinationInfo}
+          job={job}
+        />
+        <div className="grid">
+          <DeviceTable
+            devices={devices}
+            selected={selected}
+            onSelect={(value) => {
+              setSelected(value);
+              setCaseInfo(null);
+              setDestinationInfo(null);
+              setJob(null);
+              setJobDetail(null);
+              setInventory([]);
+              setSelectedPaths([]);
+            }}
+            onRefresh={refresh}
+            loading={loading}
+          />
+          <DeviceDetail
+            device={device}
+            live={environment.live}
+            caseInfo={caseInfo}
+            onCreateCase={createCase}
+            onProtect={() => {
+              setError("");
+              setModal(true);
+            }}
+          />
+          <RecoveryPipeline
+            caseInfo={caseInfo}
+            device={device}
+            onStart={startRecovery}
+            job={job}
+            inventory={inventory}
+            selectedPaths={selectedPaths}
+            setSelectedPaths={setSelectedPaths}
+            fsid={fsid}
+            setFsid={setFsid}
+            fsRoot={fsRoot}
+            setFsRoot={setFsRoot}
+          />
+          <Summary detail={jobDetail} />
+          <GuidedRecovery
+            device={device}
+            caseInfo={caseInfo}
+            destination={destination}
+            setDestination={setDestination}
+            onInspect={inspectTarget}
+            destinationInfo={destinationInfo}
+            onCreateJob={createJob}
+            job={job}
+            onControl={control}
+            message={message}
+          />
+        </div>
+      </main>
+      {modal && device && (
+        <ConfirmModal
+          device={device}
+          busy={busy}
+          error={error}
+          onClose={() => setModal(false)}
+          onConfirm={protect}
+        />
+      )}
+    </div>
+  );
 }
 
-createRoot(document.getElementById("root")).render(<React.StrictMode><App/></React.StrictMode>);
+createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);

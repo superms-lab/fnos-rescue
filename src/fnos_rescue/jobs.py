@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from dataclasses import asdict, dataclass
@@ -18,6 +19,22 @@ JOB_ID = re.compile(r"^job-[0-9a-f]{12}$")
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _durable_text(path: Path, value: str, mode: str = "w") -> None:
+    with path.open(mode, encoding="utf-8") as handle:
+        handle.write(value)
+        handle.flush()
+        os.fsync(handle.fileno())
+    path.chmod(0o600)
 
 
 @dataclass
@@ -65,6 +82,7 @@ class JobStore:
         job = RecoveryJob.create(kind, parameters)
         directory = self.root / job.job_id
         directory.mkdir(mode=0o700)
+        _fsync_directory(self.root)
         self._write(job)
         self.append_event(job, "job.created", {"kind": kind})
         return job
@@ -116,12 +134,15 @@ class JobStore:
             raise RescueError(f"unsupported job control action: {action}")
         target = self.root / job.job_id / "control.json"
         if action == "resume":
+            existed = target.exists()
             target.unlink(missing_ok=True)
+            if existed:
+                _fsync_directory(target.parent)
             if job.status == "paused":
                 self.transition(job, "queued")
         else:
-            target.write_text(json.dumps({"action": action, "requested_at": _now()}) + "\n")
-            target.chmod(0o600)
+            _durable_text(target, json.dumps({"action": action, "requested_at": _now()}) + "\n")
+            _fsync_directory(target.parent)
             self.append_event(job, f"control.{action}", {})
 
     def requested_action(self, job: RecoveryJob) -> str | None:
@@ -132,22 +153,34 @@ class JobStore:
 
     def record_failure(self, job: RecoveryJob, item: str, error: str) -> None:
         target = self.root / job.job_id / "failures.jsonl"
+        created = not target.exists()
         payload = {"timestamp": _now(), "item": item, "error": error}
-        with target.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        target.chmod(0o600)
+        _durable_text(target, json.dumps(payload, ensure_ascii=False) + "\n", mode="a")
+        if created:
+            _fsync_directory(target.parent)
         self.append_event(job, "item.failed", payload)
+
+    def failure_count(self, job: RecoveryJob) -> int:
+        target = self.root / job.job_id / "failures.jsonl"
+        if not target.is_file():
+            return 0
+        with target.open(encoding="utf-8", errors="replace") as handle:
+            return sum(1 for line in handle if line.strip())
+
+    def has_failures(self, job: RecoveryJob) -> bool:
+        return self.failure_count(job) > 0
 
     def append_event(self, job: RecoveryJob, event: str, data: dict[str, Any]) -> None:
         target = self.root / job.job_id / "progress.jsonl"
+        created = not target.exists()
         payload = {"timestamp": _now(), "job_id": job.job_id, "event": event, "data": data}
-        with target.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        target.chmod(0o600)
+        _durable_text(target, json.dumps(payload, ensure_ascii=False) + "\n", mode="a")
+        if created:
+            _fsync_directory(target.parent)
 
     def _write(self, job: RecoveryJob) -> None:
         target = self.root / job.job_id / "job.json"
         temporary = target.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(job.to_dict(), ensure_ascii=False, indent=2) + "\n")
-        temporary.chmod(0o600)
+        _durable_text(temporary, json.dumps(job.to_dict(), ensure_ascii=False, indent=2) + "\n")
         temporary.replace(target)
+        _fsync_directory(target.parent)

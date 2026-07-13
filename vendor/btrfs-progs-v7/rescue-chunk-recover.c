@@ -26,6 +26,8 @@
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
 #include "kernel-lib/list.h"
 #include "kernel-shared/accessors.h"
 #include "kernel-shared/extent-io-tree.h"
@@ -100,6 +102,8 @@ struct device_scan {
 };
 
 #define CHUNK_CACHE_MAGIC "BTRCHNK1"
+#define CHUNK_CACHE_MAX_RECORDS 1048576U
+#define CHUNK_CACHE_MAX_STRIPES 1024U
 
 struct chunk_cache_header {
 	char magic[8];
@@ -188,6 +192,8 @@ static int save_chunk_cache(struct recover_control *rc, const char *path)
 		ret = write_chunk_list(f, &rc->unrepaired_chunks, 3);
 	if (!ret)
 		ret = write_chunk_list(f, &rc->bad_chunks, 4);
+	if (!ret && (fflush(f) || fsync(fileno(f))))
+		ret = -errno;
 	if (fclose(f) && !ret)
 		ret = -errno;
 	if (!ret)
@@ -202,21 +208,44 @@ static int load_chunk_cache(struct recover_control *rc, const char *path)
 	struct chunk_record *chunk;
 	struct list_head *head;
 	FILE *f;
+	struct stat st;
+	off_t remaining;
 	u32 i;
 	int ret = 0;
 
 	f = fopen(path, "rb");
 	if (!f)
 		return -errno;
+	if (fstat(fileno(f), &st) || st.st_size < (off_t)sizeof(hdr)) {
+		ret = -EINVAL;
+		goto out;
+	}
 	if (fread(&hdr, sizeof(hdr), 1, f) != 1 ||
 	    memcmp(hdr.magic, CHUNK_CACHE_MAGIC, sizeof(hdr.magic)) ||
 	    hdr.version != 1) {
 		ret = -EINVAL;
 		goto out;
 	}
+	if (!hdr.count || hdr.count > CHUNK_CACHE_MAX_RECORDS) {
+		ret = -E2BIG;
+		goto out;
+	}
+	remaining = st.st_size - sizeof(hdr);
 	for (i = 0; i < hdr.count; i++) {
+		if (remaining < (off_t)sizeof(in)) {
+			ret = -EIO;
+			goto out;
+		}
 		if (fread(&in, sizeof(in), 1, f) != 1) {
 			ret = -EIO;
+			goto out;
+		}
+		remaining -= sizeof(in);
+		if (in.list_kind < 1 || in.list_kind > 4 ||
+		    !in.num_stripes || in.num_stripes > CHUNK_CACHE_MAX_STRIPES ||
+		    in.sub_stripes > in.num_stripes || !in.length ||
+		    remaining < (off_t)in.num_stripes * sizeof(struct stripe)) {
+			ret = -EINVAL;
 			goto out;
 		}
 		chunk = calloc(1, btrfs_chunk_record_size(in.num_stripes));
@@ -248,6 +277,7 @@ static int load_chunk_cache(struct recover_control *rc, const char *path)
 			ret = -EIO;
 			goto out;
 		}
+		remaining -= (off_t)in.num_stripes * sizeof(struct stripe);
 		ret = insert_cache_extent(&rc->chunk, &chunk->cache);
 		if (ret) {
 			free(chunk);
@@ -261,13 +291,86 @@ static int load_chunk_cache(struct recover_control *rc, const char *path)
 		}
 		list_add_tail(&chunk->list, head);
 	}
+	if (remaining != 0 || fgetc(f) != EOF || ferror(f)) {
+		ret = -EINVAL;
+		goto out;
+	}
 	fprintf(stderr, "Loaded %u cached chunk mappings from %s\n", hdr.count, path);
 out:
 	fclose(f);
 	return ret;
 }
 
-static u64 cached_inode_size(struct btrfs_root *root, u64 objectid)
+static int required_root_number(const char *prefix, const char *suffix, u64 *value)
+{
+	char name[96];
+	const char *raw;
+	char *end = NULL;
+	unsigned long long parsed;
+	int written;
+
+	written = snprintf(name, sizeof(name), "%s_%s", prefix, suffix);
+	if (written < 0 || (size_t)written >= sizeof(name))
+		return -EINVAL;
+	raw = getenv(name);
+	if (!raw || !*raw)
+		return -EINVAL;
+	errno = 0;
+	parsed = strtoull(raw, &end, 0);
+	if (errno || !end || *end)
+		return -EINVAL;
+	*value = parsed;
+	return 0;
+}
+
+static int validate_forced_root(struct extent_buffer *eb, u64 expected_bytenr,
+				const char *prefix)
+{
+	char name[96];
+	char actual_fsid[BTRFS_FSID_SIZE * 2 + 1];
+	u8 header_fsid[BTRFS_FSID_SIZE];
+	const char *expected_fsid;
+	u64 owner;
+	u64 generation;
+	u64 level;
+	int i;
+	int written;
+
+	written = snprintf(name, sizeof(name), "%s_FSID", prefix);
+	if (written < 0 || (size_t)written >= sizeof(name))
+		return -EINVAL;
+	expected_fsid = getenv(name);
+	if (!expected_fsid || strlen(expected_fsid) != BTRFS_FSID_SIZE * 2 ||
+	    required_root_number(prefix, "OWNER", &owner) ||
+	    required_root_number(prefix, "GENERATION", &generation) ||
+	    required_root_number(prefix, "LEVEL", &level)) {
+		fprintf(stderr, "%s requires FSID, owner, generation and level evidence\n",
+			prefix);
+		return -EINVAL;
+	}
+	read_extent_buffer(eb, header_fsid, btrfs_header_fsid(),
+			   BTRFS_FSID_SIZE);
+	for (i = 0; i < BTRFS_FSID_SIZE; i++)
+		snprintf(actual_fsid + i * 2, 3, "%02x", header_fsid[i]);
+	actual_fsid[BTRFS_FSID_SIZE * 2] = '\0';
+	if (strcasecmp(actual_fsid, expected_fsid) ||
+	    btrfs_header_bytenr(eb) != expected_bytenr ||
+	    btrfs_header_owner(eb) != owner ||
+	    btrfs_header_generation(eb) != generation ||
+	    btrfs_header_level(eb) != level || level >= BTRFS_MAX_LEVEL) {
+		fprintf(stderr,
+			"%s tree evidence mismatch: bytenr=%llu owner=%llu generation=%llu level=%u\n",
+			prefix,
+			(unsigned long long)btrfs_header_bytenr(eb),
+			(unsigned long long)btrfs_header_owner(eb),
+			(unsigned long long)btrfs_header_generation(eb),
+			btrfs_header_level(eb));
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int cached_inode_size(struct btrfs_root *root, u64 objectid, u64 *size)
 {
 	struct btrfs_path path = { 0 };
 	struct btrfs_key key = {
@@ -276,17 +379,57 @@ static u64 cached_inode_size(struct btrfs_root *root, u64 objectid)
 		.offset = 0,
 	};
 	struct btrfs_inode_item *inode;
-	u64 size = 0;
 	int ret;
 
 	ret = btrfs_search_slot(NULL, root, &key, &path, 0, 0);
 	if (ret == 0) {
 		inode = btrfs_item_ptr(path.nodes[0], path.slots[0],
 				       struct btrfs_inode_item);
-		size = btrfs_inode_size(path.nodes[0], inode);
+		*size = btrfs_inode_size(path.nodes[0], inode);
+		ret = 0;
+	} else if (ret > 0) {
+		ret = -ENOENT;
 	}
 	btrfs_release_path(&path);
-	return size;
+	return ret;
+}
+
+static char *base64_path(const char *value)
+{
+	static const char alphabet[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	const unsigned char *input = (const unsigned char *)value;
+	size_t length = strlen(value);
+	size_t output_length;
+	char *output;
+	size_t in = 0;
+	size_t out = 0;
+
+	if (length > (SIZE_MAX - 4) / 4 * 3)
+		return NULL;
+	output_length = ((length + 2) / 3) * 4;
+	output = malloc(output_length + 1);
+	if (!output)
+		return NULL;
+	while (in < length) {
+		u32 value24 = (u32)input[in++] << 16;
+		int available = 1;
+
+		if (in < length) {
+			value24 |= (u32)input[in++] << 8;
+			available++;
+		}
+		if (in < length) {
+			value24 |= input[in++];
+			available++;
+		}
+		output[out++] = alphabet[(value24 >> 18) & 0x3f];
+		output[out++] = alphabet[(value24 >> 12) & 0x3f];
+		output[out++] = available >= 2 ? alphabet[(value24 >> 6) & 0x3f] : '=';
+		output[out++] = available == 3 ? alphabet[value24 & 0x3f] : '=';
+	}
+	output[out] = '\0';
+	return output;
 }
 
 static int list_cached_dir(struct btrfs_root *root, u64 dirid,
@@ -303,9 +446,11 @@ static int list_cached_dir(struct btrfs_root *root, u64 dirid,
 	struct btrfs_key found, location;
 	char name[BTRFS_NAME_LEN + 1];
 	char *child;
+	char *encoded_child;
 	unsigned long name_ptr;
 	u32 name_len;
 	u8 type;
+	u64 entry_size;
 	int ret;
 
 	if (depth > 64)
@@ -340,18 +485,42 @@ static int list_cached_dir(struct btrfs_root *root, u64 dirid,
 		name[name_len] = '\0';
 		btrfs_dir_item_key_to_cpu(leaf, di, &location);
 		type = btrfs_dir_ftype(leaf, di);
-		if (asprintf(&child, "%s/%s", prefix, name) < 0) {
+		entry_size = 0;
+		if (type == BTRFS_FT_REG_FILE &&
+		    cached_inode_size(root, location.objectid, &entry_size)) {
+			ret = -EIO;
+			break;
+		}
+		if ((prefix[0] && asprintf(&child, "%s/%s", prefix, name) < 0) ||
+		    (!prefix[0] && asprintf(&child, "%s", name) < 0)) {
 			ret = -ENOMEM;
 			break;
 		}
-		fprintf(out, "%llu\t%u\t%llu\t%llu\t%s\n",
+		encoded_child = base64_path(child);
+		if (!encoded_child) {
+			free(child);
+			ret = -ENOMEM;
+			break;
+		}
+		if (fprintf(out, "%llu\t%u\t%llu\t%llu\t%s\n",
 			(unsigned long long)root->root_key.objectid, type,
-			(unsigned long long)cached_inode_size(root, location.objectid),
-			(unsigned long long)location.objectid, child);
-		fflush(out);
+			(unsigned long long)entry_size,
+			(unsigned long long)location.objectid, encoded_child) < 0) {
+			free(encoded_child);
+			free(child);
+			ret = -EIO;
+			break;
+		}
+		free(encoded_child);
+		if (fflush(out)) {
+			free(child);
+			ret = -errno;
+			break;
+		}
 		if (type == BTRFS_FT_DIR) {
 			struct btrfs_root *child_root = root;
 			u64 child_dirid = location.objectid;
+			int child_ret;
 
 			if (location.type == BTRFS_ROOT_ITEM_KEY) {
 				location.offset = (u64)-1;
@@ -359,9 +528,15 @@ static int list_cached_dir(struct btrfs_root *root, u64 dirid,
 				if (!IS_ERR(child_root))
 					child_dirid = BTRFS_FIRST_FREE_OBJECTID;
 			}
-			if (!IS_ERR(child_root))
-				list_cached_dir(child_root, child_dirid, child, out,
-						depth + 1);
+			if (!IS_ERR(child_root)) {
+				child_ret = list_cached_dir(child_root, child_dirid,
+							    child, out, depth + 1);
+				if (child_ret) {
+					free(child);
+					ret = child_ret;
+					break;
+				}
+			}
 		}
 		free(child);
 		path.slots[0]++;
@@ -1751,7 +1926,15 @@ open_ctree_with_broken_chunk(struct recover_control *rc)
 	struct btrfs_super_block *disk_super;
 	struct extent_buffer *eb;
 	u64 features;
+	bool salvage_readonly = getenv("BTRFS_LIST_PATHS") ||
+		getenv("BTRFS_EXTRACT_PATH") || getenv("BTRFS_RESTORE_OUTPUT");
 	int ret;
+
+	if ((getenv("BTRFS_FORCE_FS_ROOT") ||
+	     getenv("BTRFS_FORCE_EXTRACT_ROOT")) && !salvage_readonly) {
+		fprintf(stderr, "forced historical roots are allowed only for read-only salvage\n");
+		return ERR_PTR(-EPERM);
+	}
 
 	fs_info = btrfs_new_fs_info(1, BTRFS_SUPER_INFO_OFFSET);
 	if (!fs_info) {
@@ -1761,7 +1944,8 @@ open_ctree_with_broken_chunk(struct recover_control *rc)
 	fs_info->is_chunk_recover = 1;
 
 	fs_info->fs_devices = rc->fs_devices;
-	ret = btrfs_open_devices(fs_info, fs_info->fs_devices, O_RDWR);
+	ret = btrfs_open_devices(fs_info, fs_info->fs_devices,
+				 salvage_readonly ? O_RDONLY : O_RDWR);
 	if (ret)
 		goto out;
 
@@ -1779,7 +1963,8 @@ open_ctree_with_broken_chunk(struct recover_control *rc)
 	fs_info->nodesize = btrfs_super_nodesize(disk_super);
 	fs_info->stripesize = btrfs_super_stripesize(disk_super);
 
-	ret = btrfs_check_fs_compatibility(disk_super, OPEN_CTREE_WRITES);
+	ret = btrfs_check_fs_compatibility(disk_super,
+					   salvage_readonly ? 0 : OPEN_CTREE_WRITES);
 	if (ret)
 		goto out_devices;
 
@@ -2699,6 +2884,12 @@ mappings_ready:
 			ret = -EIO;
 			goto fail_close_ctree;
 		}
+		ret = validate_forced_root(forced, fs_bytenr,
+					   "BTRFS_FORCE_FS_ROOT");
+		if (ret) {
+			free_extent_buffer(forced);
+			goto fail_close_ctree;
+		}
 		free_extent_buffer(root->node);
 		root->node = forced;
 		fprintf(stderr, "Using forced historical fs root %llu generation %llu\n",
@@ -2712,9 +2903,14 @@ mappings_ready:
 			ret = -errno;
 			goto fail_close_ctree;
 		}
-		fprintf(out, "rootid\ttype\tsize\tobjectid\tpath\n");
-		ret = list_cached_dir(root, BTRFS_FIRST_FREE_OBJECTID, "", out, 0);
-		fclose(out);
+		if (fprintf(out, "rootid\ttype\tsize\tobjectid\tpath_b64\n") < 0)
+			ret = -EIO;
+		else
+			ret = list_cached_dir(root, BTRFS_FIRST_FREE_OBJECTID, "", out, 0);
+		if (!ret && (fflush(out) || fsync(fileno(out))))
+			ret = -errno;
+		if (fclose(out) && !ret)
+			ret = -errno;
 		goto fail_close_ctree;
 	}
 	if (getenv("BTRFS_EXTRACT_INODE") && getenv("BTRFS_EXTRACT_PATH")) {
@@ -2758,6 +2954,12 @@ mappings_ready:
 				ret = -EIO;
 				goto fail_close_ctree;
 			}
+			ret = validate_forced_root(forced, bytenr,
+						   "BTRFS_FORCE_EXTRACT_ROOT");
+			if (ret) {
+				free_extent_buffer(forced);
+				goto fail_close_ctree;
+			}
 			free_extent_buffer(extract_root->node);
 			extract_root->node = forced;
 			fprintf(stderr,
@@ -2772,7 +2974,10 @@ mappings_ready:
 			goto fail_close_ctree;
 		}
 		ret = btrfs_restore_copy_file(extract_root, fd, &file_key, output);
-		close(fd);
+		if (!ret && fsync(fd))
+			ret = -errno;
+		if (close(fd) && !ret)
+			ret = -errno;
 		goto fail_close_ctree;
 	}
 	if (getenv("BTRFS_RESTORE_DIRID") && getenv("BTRFS_RESTORE_OUTPUT") &&

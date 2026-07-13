@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .devices import (
@@ -8,7 +9,8 @@ from .devices import (
     find_serial,
     inspect_device,
     is_root,
-    iter_device_paths,
+    related_block_devices,
+    related_block_identities,
 )
 from .errors import SafetyError
 from .runner import require_tool, run
@@ -43,11 +45,13 @@ def protect_source(
     if not is_root() and not dry_run:
         raise SafetyError("protect requires root privileges")
     require_tool("blockdev")
-    paths = list(iter_device_paths(facts))
+    paths = related_block_devices(device)
+    _assert_no_writable_mounts(paths)
     if dry_run:
         return [f"blockdev --setro {path}" for path in paths]
-    for path in paths:
-        run(["blockdev", "--setro", path])
+    for _ in range(2):
+        for path in paths:
+            run(["blockdev", "--setro", path])
     failed = [path for path in paths if not current_read_only(path)]
     if failed:
         raise SafetyError(f"read-only verification failed: {', '.join(failed)}")
@@ -59,11 +63,20 @@ def assert_read_only(path: str | Path) -> None:
         raise SafetyError(f"source layer is writable: {path}")
 
 
+def assert_source_graph_read_only(path: str | Path) -> list[str]:
+    paths = related_block_devices(path)
+    _assert_no_writable_mounts(paths)
+    writable = [device for device in paths if not current_read_only(device)]
+    if writable:
+        raise SafetyError(f"source device graph is writable: {', '.join(writable)}")
+    return paths
+
+
 def destination_source(path: str | Path) -> str | None:
     require_tool("findmnt")
     destination = Path(path).expanduser().resolve()
     result = run(
-        ["findmnt", "--noheadings", "--output", "SOURCE", "--target", destination],
+        ["findmnt", "--evaluate", "--noheadings", "--output", "SOURCE", "--target", destination],
         check=False,
     )
     return result.stdout.strip() or None
@@ -73,8 +86,38 @@ def assert_destination_not_source(source: str | Path, destination: str | Path) -
     mounted_from = destination_source(destination)
     if not mounted_from:
         raise SafetyError(f"cannot identify destination filesystem: {destination}")
-    source_name = Path(source).name
-    result = run(["lsblk", "--noheadings", "--output", "NAME,PKNAME", mounted_from], check=False)
-    names = {part for line in result.stdout.splitlines() for part in line.split()}
-    if source_name in names or str(Path(source)) == mounted_from:
+    mounted_device = mounted_from.split("[", 1)[0]
+    if not mounted_device.startswith("/dev/"):
+        filesystem = run(
+            ["findmnt", "--noheadings", "--output", "FSTYPE", "--target", Path(destination).resolve()],
+            check=False,
+        ).stdout.strip().lower()
+        if filesystem in {"nfs", "nfs4", "cifs", "smb3"}:
+            return
+        raise SafetyError(
+            f"cannot prove physical separation for destination source {mounted_from!r} ({filesystem or 'unknown'})"
+        )
+    source_ids = related_block_identities(source)
+    destination_ids = related_block_identities(mounted_device)
+    if source_ids & destination_ids:
         raise SafetyError("destination resolves to the source disk or one of its layers")
+
+
+def _assert_no_writable_mounts(paths: list[str]) -> None:
+    require_tool("findmnt")
+    for path in paths:
+        result = run(
+            ["findmnt", "--json", "--output", "SOURCE,TARGET,OPTIONS", "--source", path],
+            check=False,
+        )
+        if not result.stdout.strip():
+            continue
+        try:
+            filesystems = json.loads(result.stdout).get("filesystems") or []
+        except ValueError as exc:
+            raise SafetyError(f"cannot verify mount state for source layer: {path}") from exc
+        for filesystem in filesystems:
+            options = set(str(filesystem.get("options") or "").split(","))
+            if "rw" in options:
+                target = filesystem.get("target") or "unknown"
+                raise SafetyError(f"source layer is mounted read-write: {path} at {target}")
