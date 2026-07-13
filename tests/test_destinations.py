@@ -1,10 +1,13 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from fnos_rescue.destinations import (
     DestinationFacts,
     assert_destination_ready,
     classify_filesystem,
     parse_findmnt,
+    _approved_destination,
 )
 from fnos_rescue.errors import SafetyError
 
@@ -21,6 +24,16 @@ class DestinationTests(unittest.TestCase):
             "options": "rw,nosuid,nodev"
         }]})
         self.assertEqual(parsed, ("server:/export", "/mnt/out", "nfs4", ("rw", "nosuid", "nodev")))
+
+    def test_destination_must_stay_inside_an_approved_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.assertEqual(
+                _approved_destination(root / "new" / "output", (root,)),
+                Path(root / "new" / "output").resolve(),
+            )
+            with self.assertRaises(SafetyError):
+                _approved_destination(root.parent / "outside", (root,))
 
     def facts(self, **changes):
         values = dict(
