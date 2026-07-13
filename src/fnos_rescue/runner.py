@@ -21,6 +21,7 @@ from .errors import JobControlRequested
 APPROVED_TOOLS = {
     "blockdev": "blockdev",
     "btrfs": "btrfs",
+    "df": "df",
     "dumpe2fs": "dumpe2fs",
     "file": "file",
     "findmnt": "findmnt",
