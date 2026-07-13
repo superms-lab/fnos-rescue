@@ -3,11 +3,25 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fnos_rescue.errors import JobControlRequested
-from fnos_rescue.runner import run_interruptible, run_streaming
+from fnos_rescue.errors import JobControlRequested, RescueError
+from fnos_rescue.runner import run, run_interruptible, run_streaming
 
 
 class InterruptibleRunnerTests(unittest.TestCase):
+    def test_general_runner_rejects_unapproved_executables(self) -> None:
+        with self.assertRaises(RescueError):
+            run([sys.executable, "-c", "print('must not run')"])
+
+    def test_streaming_runner_rejects_trusted_executable_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(RescueError):
+                run_streaming(
+                    [sys.executable, "-c", "print('must not run')"],
+                    stdout_path=Path(temporary) / "stdout.log",
+                    stderr_path=Path(temporary) / "stderr.log",
+                    trusted_executable="/definitely/not/python",
+                )
+
     def test_pause_terminates_running_process(self) -> None:
         calls = 0
 
@@ -22,6 +36,7 @@ class InterruptibleRunnerTests(unittest.TestCase):
                 control=control,
                 timeout=35,
                 poll_interval=0.01,
+                trusted_executable=sys.executable,
             )
         self.assertEqual(raised.exception.action, "pause")
 
@@ -40,6 +55,7 @@ class InterruptibleRunnerTests(unittest.TestCase):
                 stderr_path=stderr,
                 timeout=10,
                 poll_interval=0.01,
+                trusted_executable=sys.executable,
             )
             self.assertEqual(result.returncode, 0)
             self.assertEqual(stdout.stat().st_size, 4_000_000)
