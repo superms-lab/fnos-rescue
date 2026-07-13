@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fnos_rescue.devices import DeviceFacts, iter_device_paths, related_block_devices
+from fnos_rescue.devices import DeviceFacts, iter_device_paths, related_block_devices, require_block_device
 from fnos_rescue.errors import SafetyError
 from fnos_rescue.safety import assert_destination_not_source, confirm_serial
 
@@ -37,6 +37,11 @@ def fixture() -> DeviceFacts:
 
 
 class SafetyTests(unittest.TestCase):
+    @patch("fnos_rescue.devices.platform.system", return_value="Linux")
+    def test_block_device_path_must_resolve_inside_dev(self, _system) -> None:
+        with self.assertRaises(SafetyError):
+            require_block_device("/tmp/not-a-device")
+
     def test_requires_exact_serial(self) -> None:
         self.assertEqual(confirm_serial(fixture(), "SERIAL-123"), "SERIAL-123")
         with self.assertRaises(SafetyError):

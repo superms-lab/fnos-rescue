@@ -24,7 +24,7 @@ from .devices import DeviceFacts, inspect_device
 from .destinations import assert_destination_ready, inspect_destination
 from .errors import RescueError
 from .executors import start_background
-from .jobs import JobStore
+from .jobs import JOB_ID, JobStore
 from .runner import run
 from .safety import assert_destination_not_source, assert_source_graph_read_only, confirm_serial, protect_source
 
@@ -69,13 +69,18 @@ def _configured_web_roots() -> tuple[Path, ...]:
 
 
 def _require_web_root(path: str | Path, *, include_case: Path | None = None) -> Path:
-    target = Path(path).expanduser().resolve()
+    raw = os.fspath(path)
+    if not raw or "\0" in raw:
+        raise ValueError("path is empty or contains a null byte")
+    target = os.path.realpath(os.path.expanduser(raw))
     roots = list(_configured_web_roots())
     if include_case is not None:
         roots.append(include_case.resolve())
-    if not any(target == root or root in target.parents for root in roots):
-        raise ValueError("path is outside the administrator-approved Web recovery roots")
-    return target
+    for root in roots:
+        normalized_root = os.path.realpath(os.fspath(root))
+        if target == normalized_root or target.startswith(normalized_root + os.sep):
+            return Path(target)
+    raise ValueError("path is outside the administrator-approved Web recovery roots")
 
 
 def _require_case_device(case_path: Path, case: RecoveryCase, supplied: object) -> str:
@@ -86,20 +91,29 @@ def _require_case_device(case_path: Path, case: RecoveryCase, supplied: object) 
     return value
 
 
-def _require_case_cache(case_path: Path, supplied: object) -> None:
-    cache = Path(str(supplied or "")).expanduser().resolve()
+def _require_case_cache(case_path: Path, supplied: object) -> str:
     jobs_root = case_path.resolve() / "jobs"
-    if jobs_root not in cache.parents or cache.name != "chunk-mappings.cache":
+    raw = str(supplied or "")
+    if not raw or "\0" in raw:
+        raise ValueError("chunk cache path is empty or contains a null byte")
+    normalized = os.path.realpath(os.path.expanduser(raw))
+    root_text = os.fspath(jobs_root)
+    if not normalized.startswith(root_text + os.sep):
         raise ValueError("chunk cache must be a case-owned job artifact")
-    try:
-        job_id = cache.relative_to(jobs_root).parts[0]
-    except (ValueError, IndexError) as exc:
-        raise ValueError("chunk cache has no owning case job") from exc
+    relative = os.path.relpath(normalized, root_text)
+    parts = Path(relative).parts
+    if len(parts) != 2 or not JOB_ID.fullmatch(parts[0]) or parts[1] != "chunk-mappings.cache":
+        raise ValueError("chunk cache path is not a canonical case job artifact")
+    job_id = parts[0]
+    cache = jobs_root / job_id / "chunk-mappings.cache"
+    if os.path.realpath(os.fspath(cache)) != normalized:
+        raise ValueError("chunk cache resolves outside its owning case job")
     owner = JobStore(case_path).load(job_id)
     if owner.kind != "btrfs-chunk-cache" or owner.status != "completed":
         raise ValueError("chunk cache owner is not a completed cache job")
     if cache != jobs_root / job_id / "chunk-mappings.cache" or not cache.is_file():
         raise ValueError("case-owned chunk cache artifact is missing")
+    return os.fspath(cache)
 
 
 def validate_web_job(case_path: Path, kind: str, parameters: dict[str, Any]) -> None:
@@ -109,12 +123,16 @@ def validate_web_job(case_path: Path, kind: str, parameters: dict[str, Any]) -> 
     if "source_device" in parameters:
         _require_case_device(case_path, case, parameters["source_device"])
     if "chunk_cache" in parameters:
-        _require_case_cache(case_path, parameters["chunk_cache"])
+        parameters["chunk_cache"] = _require_case_cache(case_path, parameters["chunk_cache"])
     if kind == "copy":
-        _require_web_root(parameters.get("destination", ""))
-        _require_web_root(parameters.get("source_root", ""), include_case=case_path)
+        parameters["destination"] = os.fspath(_require_web_root(parameters.get("destination", "")))
+        parameters["source_root"] = os.fspath(
+            _require_web_root(parameters.get("source_root", ""), include_case=case_path)
+        )
     if kind == "verify":
-        _require_web_root(parameters.get("path", ""), include_case=case_path)
+        parameters["path"] = os.fspath(
+            _require_web_root(parameters.get("path", ""), include_case=case_path)
+        )
 
 
 def list_cases(root: Path | None = None) -> list[dict[str, Any]]:
@@ -294,8 +312,8 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
                 if not destination or not source_device.startswith("/dev/"):
                     raise ValueError("destination and source device are required")
                 _require_case_device(case_path, case, source_device)
-                _require_web_root(destination)
-                facts = inspect_destination(destination)
+                destination_path = _require_web_root(destination)
+                facts = inspect_destination(destination_path)
                 assert_destination_not_source(source_device, facts.existing_ancestor)
                 assert_destination_ready(facts, int(body.get("required_bytes") or 0))
                 self._json(HTTPStatus.OK, facts.to_dict())

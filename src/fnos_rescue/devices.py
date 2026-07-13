@@ -41,7 +41,11 @@ def require_linux() -> None:
 
 def require_block_device(path: str | Path) -> Path:
     require_linux()
-    resolved = Path(path).resolve()
+    requested = os.path.realpath(os.path.expanduser(os.fspath(path)))
+    device_root = os.path.realpath("/dev")
+    if not requested.startswith(device_root + os.sep):
+        raise SafetyError("block device path must resolve inside /dev")
+    resolved = Path(requested)
     try:
         mode = resolved.stat().st_mode
     except FileNotFoundError as exc:

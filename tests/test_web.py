@@ -9,10 +9,42 @@ from unittest.mock import Mock, patch
 from fnos_rescue.devices import DeviceFacts
 from fnos_rescue.cases import RecoveryCase
 from fnos_rescue.errors import RescueError
-from fnos_rescue.web import RescueWebHandler, _human_size, _read_inventory, case_directory, list_devices, load_access_token, serve, validate_web_job
+from fnos_rescue.web import RescueWebHandler, _human_size, _read_inventory, _require_case_cache, _require_web_root, case_directory, list_devices, load_access_token, serve, validate_web_job
+from fnos_rescue.jobs import JobStore
 
 
 class WebTests(unittest.TestCase):
+    def test_web_root_follows_symlinks_before_containment_check(self):
+        with tempfile.TemporaryDirectory() as temporary, tempfile.TemporaryDirectory() as outside:
+            root = Path(temporary)
+            allowed = root / "allowed"
+            allowed.mkdir()
+            (allowed / "inside").mkdir()
+            (allowed / "escape").symlink_to(outside)
+            with patch.dict("os.environ", {"FNOS_RESCUE_WEB_ROOTS": str(allowed)}):
+                self.assertEqual(_require_web_root(allowed / "inside"), (allowed / "inside").resolve())
+                with self.assertRaises(ValueError):
+                    _require_web_root(allowed / "escape")
+
+    def test_chunk_cache_is_rebuilt_from_validated_job_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = RecoveryCase.create(DeviceFacts(
+                path="/dev/sda", name="sda", size_bytes=1000, read_only=True,
+                device_type="disk", filesystem="btrfs", model="test", serial="SERIAL",
+                uuid="1" * 32, mountpoints=(),
+            ))
+            case_path = root / case.case_id
+            case.save(case_path)
+            store = JobStore(case_path)
+            job = store.create("btrfs-chunk-cache", {})
+            cache = store.root / job.job_id / "chunk-mappings.cache"
+            cache.write_bytes(b"cache")
+            store.transition(job, "completed")
+            self.assertEqual(_require_case_cache(case_path, cache), str(cache.resolve()))
+            with self.assertRaises(ValueError):
+                _require_case_cache(case_path, store.root / job.job_id / "../chunk-mappings.cache")
+
     def test_human_size(self):
         self.assertEqual(_human_size(4_000_000_000_000), "4.00 TB")
 
