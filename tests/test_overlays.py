@@ -40,13 +40,15 @@ class OverlayTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             store = self.make_store(root)
-            overlay = root / "test.qcow2"
+            overlay = store.case / "test.qcow2"
             overlay.write_bytes(b"qcow2")
             connect = store.create("overlay-connect", {"overlay": str(overlay), "nbd_device": "/dev/nbd7"})
             disconnect = store.create("overlay-disconnect", {"nbd_device": "/dev/nbd7"})
             result = CommandResult(("qemu-nbd",), 0, "", "")
             with patch("fnos_rescue.overlays.require_block_device", return_value=Path("/dev/nbd7")), patch(
                 "fnos_rescue.overlays.require_tool"
+            ), patch("fnos_rescue.overlays._overlay_backing", return_value=Path("/dev/test")), patch(
+                "fnos_rescue.overlays._nbd_pid", return_value=123
             ), patch("fnos_rescue.overlays.run", return_value=result):
                 self.assertEqual(execute_overlay_connect(store, connect).status, "completed")
                 self.assertEqual(execute_overlay_disconnect(store, disconnect).status, "completed")

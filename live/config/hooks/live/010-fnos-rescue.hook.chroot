@@ -2,6 +2,7 @@
 set -eu
 chmod 0755 /opt/fnos-rescue/scripts/live-session.sh
 chmod 0755 /opt/fnos-rescue/scripts/live-ready.sh
+chmod 0755 /usr/local/sbin/fnos-rescue-live-token
 ln -sf /opt/fnos-rescue/scripts/live-session.sh /usr/local/bin/fnos-rescue-session
 systemctl enable fnos-rescue-web.service
 systemctl enable fnos-rescue-kiosk.service

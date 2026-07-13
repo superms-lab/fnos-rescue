@@ -11,12 +11,15 @@ class FnosPackagingTests(unittest.TestCase):
     def test_web_service_is_loopback_only_and_sandboxed(self) -> None:
         service = Path("packaging/fnos/fnos-rescue-web.service").read_text()
         self.assertIn("--host 127.0.0.1", service)
-        self.assertIn("ProtectSystem=strict", service)
+        self.assertIn("ProtectSystem=full", service)
+        self.assertIn("ReadOnlyPaths=/etc /opt /srv /var", service)
         self.assertIn("ReadWritePaths=/var/lib/fnos-rescue", service)
+        self.assertIn("--token-file /var/lib/fnos-rescue/web.token", service)
         self.assertIn("Environment=PYTHONDONTWRITEBYTECODE=1", service)
         installer = Path("packaging/fnos/install.sh").read_text()
         self.assertIn("systemctl is-active --quiet", installer)
         self.assertIn("install -d -m 0700 /var/lib/fnos-rescue", installer)
+        self.assertIn("chmod 0600 /var/lib/fnos-rescue/web.token", installer)
         self.assertIn("PYTHONDONTWRITEBYTECODE=1", installer)
 
         lifecycle = Path("scripts/test-fnos-package-lifecycle.sh").read_text()

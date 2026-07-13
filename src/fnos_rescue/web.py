@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import getpass
+import base64
+import binascii
 import csv
-import io
+import ipaddress
 import json
+import os
 import platform
 import socket
 import re
@@ -16,14 +19,14 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
 
-from .cases import RecoveryCase
+from .cases import RecoveryCase, assert_case_source
 from .devices import DeviceFacts, inspect_device
 from .destinations import assert_destination_ready, inspect_destination
 from .errors import RescueError
 from .executors import start_background
 from .jobs import JobStore
 from .runner import run
-from .safety import assert_destination_not_source, confirm_serial, protect_source
+from .safety import assert_destination_not_source, assert_source_graph_read_only, confirm_serial, protect_source
 
 MAX_BODY_BYTES = 16_384
 CASE_ID = re.compile(r"^case-[0-9a-f]{12}$")
@@ -32,10 +35,11 @@ WEB_JOB_PARAMETERS = {
     "verify": {"path", "limit"},
     "btrfs-probe": {"device"},
     "btrfs-root-scan": {"device", "fsid", "start_gib", "end_gib", "timeout"},
-    "btrfs-chunk-cache": {"device", "timeout"},
-    "btrfs-list": {"device", "chunk_cache", "filesystem_root", "timeout"},
-    "btrfs-extract-batch": {"device", "chunk_cache", "filesystem_root", "items", "per_file_timeout"},
+    "btrfs-chunk-cache": {"device", "fsid", "timeout"},
+    "btrfs-list": {"device", "chunk_cache", "filesystem_root", "filesystem_root_evidence", "timeout"},
+    "btrfs-extract-batch": {"device", "chunk_cache", "filesystem_root", "filesystem_root_evidence", "items", "per_file_timeout"},
 }
+DEFAULT_WEB_ROOTS = (Path("/mnt"), Path("/media"), Path("/run/media"), Path("/fs"))
 
 
 def default_case_root() -> Path:
@@ -46,6 +50,71 @@ def case_directory(case_id: str, root: Path | None = None) -> Path:
     if not CASE_ID.fullmatch(case_id):
         raise ValueError("invalid case id")
     return (root or default_case_root()) / case_id
+
+
+def load_access_token(path: str | Path) -> str:
+    token_file = Path(path).expanduser().resolve()
+    if not token_file.is_file() or token_file.stat().st_mode & 0o037:
+        raise RescueError("Web token file must be private (0600 or controlled 0640)")
+    token = token_file.read_text().strip()
+    if len(token) < 32:
+        raise RescueError("Web access token is missing or too short")
+    return token
+
+
+def _configured_web_roots() -> tuple[Path, ...]:
+    configured = os.environ.get("FNOS_RESCUE_WEB_ROOTS", "")
+    values = configured.split(":") if configured else [str(path) for path in DEFAULT_WEB_ROOTS]
+    return tuple(Path(value).resolve() for value in values if value.startswith("/"))
+
+
+def _require_web_root(path: str | Path, *, include_case: Path | None = None) -> Path:
+    target = Path(path).expanduser().resolve()
+    roots = list(_configured_web_roots())
+    if include_case is not None:
+        roots.append(include_case.resolve())
+    if not any(target == root or root in target.parents for root in roots):
+        raise ValueError("path is outside the administrator-approved Web recovery roots")
+    return target
+
+
+def _require_case_device(case_path: Path, case: RecoveryCase, supplied: object) -> str:
+    value = str(supplied or "")
+    if not value.startswith("/dev/"):
+        raise ValueError("job device does not match the recovery case source")
+    assert_case_source(case_path, value)
+    return value
+
+
+def _require_case_cache(case_path: Path, supplied: object) -> None:
+    cache = Path(str(supplied or "")).expanduser().resolve()
+    jobs_root = case_path.resolve() / "jobs"
+    if jobs_root not in cache.parents or cache.name != "chunk-mappings.cache":
+        raise ValueError("chunk cache must be a case-owned job artifact")
+    try:
+        job_id = cache.relative_to(jobs_root).parts[0]
+    except (ValueError, IndexError) as exc:
+        raise ValueError("chunk cache has no owning case job") from exc
+    owner = JobStore(case_path).load(job_id)
+    if owner.kind != "btrfs-chunk-cache" or owner.status != "completed":
+        raise ValueError("chunk cache owner is not a completed cache job")
+    if cache != jobs_root / job_id / "chunk-mappings.cache" or not cache.is_file():
+        raise ValueError("case-owned chunk cache artifact is missing")
+
+
+def validate_web_job(case_path: Path, kind: str, parameters: dict[str, Any]) -> None:
+    case = RecoveryCase.load(case_path)
+    if "device" in parameters:
+        _require_case_device(case_path, case, parameters["device"])
+    if "source_device" in parameters:
+        _require_case_device(case_path, case, parameters["source_device"])
+    if "chunk_cache" in parameters:
+        _require_case_cache(case_path, parameters["chunk_cache"])
+    if kind == "copy":
+        _require_web_root(parameters.get("destination", ""))
+        _require_web_root(parameters.get("source_root", ""), include_case=case_path)
+    if kind == "verify":
+        _require_web_root(parameters.get("path", ""), include_case=case_path)
 
 
 def list_cases(root: Path | None = None) -> list[dict[str, Any]]:
@@ -69,7 +138,7 @@ def list_devices() -> list[dict[str, Any]]:
         return []
     result = run([
         "lsblk", "--json", "--bytes", "--output",
-        "NAME,PATH,SIZE,RO,TYPE,FSTYPE,MODEL,SERIAL,UUID,MOUNTPOINTS",
+        "NAME,PATH,SIZE,RO,TYPE,FSTYPE,MODEL,SERIAL,UUID,MOUNTPOINTS,MAJ:MIN,PKNAME",
     ])
     document = json.loads(result.stdout)
     devices: list[dict[str, Any]] = []
@@ -97,6 +166,8 @@ def _facts_from_lsblk(item: dict[str, Any]) -> DeviceFacts:
         serial=(item.get("serial") or "").strip() or None,
         uuid=item.get("uuid"),
         mountpoints=tuple(str(point) for point in item.get("mountpoints") or [] if point),
+        major_minor=str(item.get("maj:min") or "") or None,
+        parent_name=str(item.get("pkname") or "") or None,
         children=tuple(_facts_from_lsblk(child) for child in item.get("children") or []),
     )
 
@@ -135,9 +206,11 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             self._json(HTTPStatus.OK, {"ok": True, "service": "fnos-rescue"})
             return
+        if path.startswith("/api/") and not self._authorized():
+            return
         if path == "/api/devices":
             try:
-                self._json(HTTPStatus.OK, {"devices": list_devices(), "environment": environment(), "csrf_token": self.server.csrf_token})
+                self._json(HTTPStatus.OK, {"devices": list_devices(), "environment": environment()})
             except (OSError, RescueError, ValueError, json.JSONDecodeError) as exc:
                 self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
             return
@@ -185,11 +258,14 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
         if path not in {"/api/protect", "/api/cases", "/api/destination", "/api/jobs", "/api/jobs/start", "/api/jobs/control"}:
             self._json(HTTPStatus.NOT_FOUND, {"error": "unknown API endpoint"})
             return
+        if not self._valid_host():
+            self._json(HTTPStatus.FORBIDDEN, {"error": "invalid local Host header"})
+            return
         if self.headers.get("Origin") not in {None, f"http://{self.headers.get('Host')}"}:
             self._json(HTTPStatus.FORBIDDEN, {"error": "cross-origin requests are forbidden"})
             return
-        if not secrets.compare_digest(self.headers.get("X-FNOS-Token", ""), self.server.csrf_token):
-            self._json(HTTPStatus.FORBIDDEN, {"error": "missing or invalid session token"})
+        if not secrets.compare_digest(self.headers.get("X-FNOS-Token", ""), self.server.access_token):
+            self._json(HTTPStatus.UNAUTHORIZED, {"error": "missing or invalid access token"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -204,18 +280,21 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
                 device, serial = self._device_confirmation(body)
                 facts = inspect_device(device)
                 confirm_serial(facts, serial)
-                if not facts.read_only:
-                    raise ValueError("source device must be read-only before creating a case")
+                assert_source_graph_read_only(device)
                 case = RecoveryCase.create(facts, filesystem=body.get("filesystem"))
                 root = default_case_root()
                 root.mkdir(parents=True, exist_ok=True, mode=0o700)
                 case.save(root / case.case_id)
                 self._json(HTTPStatus.CREATED, case.to_dict())
             elif path == "/api/destination":
+                case_path = case_directory(str(body.get("case_id") or ""))
+                case = RecoveryCase.load(case_path)
                 destination = str(body.get("path") or "")
                 source_device = str(body.get("source_device") or "")
                 if not destination or not source_device.startswith("/dev/"):
                     raise ValueError("destination and source device are required")
+                _require_case_device(case_path, case, source_device)
+                _require_web_root(destination)
                 facts = inspect_destination(destination)
                 assert_destination_not_source(source_device, facts.existing_ancestor)
                 assert_destination_ready(facts, int(body.get("required_bytes") or 0))
@@ -231,7 +310,9 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
                 unexpected = set(parameters) - WEB_JOB_PARAMETERS[kind]
                 if unexpected:
                     raise ValueError(f"job parameters are not allowed: {', '.join(sorted(unexpected))}")
-                job = JobStore(case_directory(case_id)).create(kind, parameters)
+                case_path = case_directory(case_id)
+                validate_web_job(case_path, kind, parameters)
+                job = JobStore(case_path).create(kind, parameters)
                 self._json(HTTPStatus.CREATED, job.to_dict())
             elif path == "/api/jobs/start":
                 store, job = self._job_from_body(body)
@@ -259,6 +340,20 @@ class RescueWebHandler(SimpleHTTPRequestHandler):
         store = JobStore(case_directory(str(body.get("case_id") or "")))
         return store, store.load(str(body.get("job_id") or ""))
 
+    def _valid_host(self) -> bool:
+        value = self.headers.get("Host", "")
+        host = value.rsplit(":", 1)[0].strip("[]").lower()
+        return host in {"127.0.0.1", "localhost", "::1"}
+
+    def _authorized(self) -> bool:
+        if not self._valid_host():
+            self._json(HTTPStatus.FORBIDDEN, {"error": "invalid local Host header"})
+            return False
+        if not secrets.compare_digest(self.headers.get("X-FNOS-Token", ""), self.server.access_token):
+            self._json(HTTPStatus.UNAUTHORIZED, {"error": "missing or invalid access token"})
+            return False
+        return True
+
     def log_message(self, format: str, *args: Any) -> None:
         print(f"web: {format % args}")
 
@@ -273,25 +368,60 @@ def _jsonl_tail(path: Path, limit: int) -> list[dict[str, Any]]:
 def _read_inventory(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         raise ValueError("inventory artifact is missing")
-    text = path.read_text(errors="replace")
-    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
-    if not reader.fieldnames or "path" not in reader.fieldnames:
-        raise ValueError("inventory has no path column")
     items = []
-    for row in reader:
-        value = str(row.get("path") or "").strip()
-        if not value or value.startswith("/") or ".." in Path(value).parts:
-            continue
-        item = {key: str(value or "") for key, value in row.items() if key}
-        item["inode"] = item.get("inode") or item.get("objectid", "")
-        item["expected_size"] = item.get("expected_size") or item.get("size", "")
-        items.append(item)
-        if len(items) >= 50_000:
-            break
+    with path.open(encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if not reader.fieldnames or not ({"path", "path_b64"} & set(reader.fieldnames)):
+            raise ValueError("inventory has no path or path_b64 column")
+        for row in reader:
+            encoded = str(row.get("path_b64") or "")
+            if encoded:
+                try:
+                    raw = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error):
+                    continue
+                parts = raw.split(b"/")
+                if not raw or raw.startswith(b"/") or b"\0" in raw or any(part in {b"", b".."} for part in parts):
+                    continue
+                value_parts = []
+                for character in raw.decode("utf-8", errors="surrogateescape"):
+                    code = ord(character)
+                    if 0xDC80 <= code <= 0xDCFF:
+                        value_parts.append(f"\\x{code - 0xDC00:02x}")
+                    elif character == "\\":
+                        value_parts.append("\\\\")
+                    elif code < 32 or code == 127:
+                        value_parts.append(f"\\x{code:02x}")
+                    else:
+                        value_parts.append(character)
+                value = "".join(value_parts)
+            else:
+                value = str(row.get("path") or "").strip()
+                if not value or value.startswith("/") or ".." in Path(value).parts:
+                    continue
+            item = {key: str(row_value or "") for key, row_value in row.items() if key}
+            if item.get("type") and item["type"] != "1":
+                continue
+            item["path"] = value
+            item["inode"] = item.get("inode") or item.get("objectid", "")
+            item["expected_size"] = item.get("expected_size") or item.get("size", "")
+            items.append(item)
+            if len(items) >= 50_000:
+                break
     return items
 
 
-def serve(host: str, port: int, static_dir: str | Path | None = None) -> None:
+def serve(
+    host: str,
+    port: int,
+    static_dir: str | Path | None = None,
+    token_file: str | Path | None = None,
+) -> None:
+    try:
+        if host != "localhost" and not ipaddress.ip_address(host).is_loopback:
+            raise RescueError("Web console may listen only on a loopback address")
+    except ValueError as exc:
+        raise RescueError("Web console host must be localhost or a loopback IP") from exc
     bundled = Path(__file__).with_name("web_dist")
     development = Path(__file__).resolve().parents[2] / "web" / "dist"
     root = Path(static_dir) if static_dir else (bundled if bundled.is_dir() else development)
@@ -299,8 +429,10 @@ def serve(host: str, port: int, static_dir: str | Path | None = None) -> None:
         raise RescueError(f"web assets not found: {root}; run npm run build in web/")
     handler = lambda *args, **kwargs: RescueWebHandler(*args, directory=str(root), **kwargs)
     server = ThreadingHTTPServer((host, port), handler)
-    server.csrf_token = secrets.token_urlsafe(32)
+    server.access_token = load_access_token(token_file) if token_file else secrets.token_urlsafe(32)
     print(f"FNOS Rescue web console: http://{host}:{port}")
+    if not token_file:
+        print(f"Temporary Web access token: {server.access_token}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

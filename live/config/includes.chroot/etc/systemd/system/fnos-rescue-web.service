@@ -7,13 +7,21 @@ Type=simple
 User=root
 Environment=HOME=/var/lib/fnos-rescue
 Environment=PYTHONPATH=/opt/fnos-rescue/src
-ExecStart=/usr/bin/python3 -m fnos_rescue serve --host 127.0.0.1 --port 8790 --static-dir /opt/fnos-rescue/web/dist
+Environment=FNOS_RESCUE_WEB_ROOTS=/mnt:/media:/run/media
+ExecStartPre=/usr/local/sbin/fnos-rescue-live-token
+ExecStart=/usr/bin/python3 -m fnos_rescue serve --host 127.0.0.1 --port 8790 --static-dir /opt/fnos-rescue/web/dist --token-file /var/lib/fnos-rescue/web.token
 Restart=on-failure
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
-ProtectSystem=strict
+ProtectSystem=full
+ReadOnlyPaths=/etc /opt /srv /var
 ReadWritePaths=/var/lib/fnos-rescue /run /tmp
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target

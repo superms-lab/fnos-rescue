@@ -52,14 +52,21 @@ DUP copies validate.
 ## 4. Create a disposable overlay
 
 ```bash
-sudo qemu-img create -f qcow2 -F raw -b /dev/READ_ONLY_LOOP case.qcow2
+fnos-rescue job-create CASE overlay-create \
+  --parameters '{"backing_device":"/dev/READ_ONLY_LOOP"}'
+fnos-rescue job-run CASE OVERLAY-CREATE-JOB
 sudo modprobe nbd max_part=8
-sudo qemu-nbd --connect=/dev/nbd0 case.qcow2
+fnos-rescue job-create CASE overlay-connect \
+  --parameters '{"overlay":"CASE/jobs/OVERLAY-CREATE-JOB/recovery-overlay.qcow2","nbd_device":"/dev/nbd0"}'
+fnos-rescue job-run CASE OVERLAY-CONNECT-JOB
 sudo python helpers/set_btrfs_historical_root.py \
-  /dev/nbd0 ROOT_BYTENR GENERATION ROOT_LEVEL
+  /dev/nbd0 ROOT_BYTENR GENERATION ROOT_LEVEL \
+  --overlay-state CASE/jobs/OVERLAY-CONNECT-JOB/overlay-state.json
 ```
 
-The backing source must remain read-only. `/dev/nbd0` is the only writable experimental view.
+The backing source must remain read-only. `/dev/nbd0` is the only writable experimental view. The
+helper refuses raw disks and requires a current, private state file created by the case-owned
+overlay connection job; a confirmation flag by itself is not accepted as proof.
 
 ## 5. Preserve chunk mappings
 
@@ -80,8 +87,15 @@ Use the cache and a coherent filesystem root to list paths. Recover selected dir
 different disk or network share. Validate representative files across ages and formats with full
 reads, magic checks, archive tests, media parsers, expected sizes, and destination-side hashes.
 
-Keep every failed placeholder until a failure manifest distinguishes genuine empty files from
-read failures. A plausible filename and size are inventory evidence, not proof of valid content.
+Do not reuse a loose cache file or type a root address from memory. The cache manifest must match
+the current case source identity, recovery layer and exact private-tool SHA-256. The selected root
+must come from the same case's `root-candidates.json`; FSID, owner, generation and level are passed
+to and rechecked inside the private C tool before the tree block is used. Cache readers reject
+unbounded record/stripe counts, truncated records and trailing bytes.
+
+Results explicitly distinguish `validated`, `genuine_empty`, `unvalidated`, and `invalid` content.
+Keep every failed or unvalidated artifact until its manifest has been reviewed. A plausible
+filename, size, or self-computed hash is inventory evidence, not proof of valid content.
 
 ## 7. Finish safely
 

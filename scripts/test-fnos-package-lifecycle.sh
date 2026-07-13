@@ -49,6 +49,10 @@ wait_for_health() {
 "$PACKAGE_DIR/install.sh"
 systemctl is-active --quiet fnos-rescue-web.service
 wait_for_health
+TOKEN=$(cat /var/lib/fnos-rescue/web.token)
+test "$(stat -c '%a' /var/lib/fnos-rescue/web.token)" = 600
+test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8790/api/devices)" = 401
+curl -fsS -H "X-FNOS-Token: $TOKEN" http://127.0.0.1:8790/api/devices >/dev/null
 "$APP/bin/fnos-rescue" --version | grep -q " $VERSION$"
 ss -ltn | grep -q '127\.0\.0\.1:8790'
 ! ss -ltn | grep -q '0\.0\.0\.0:8790'
@@ -58,7 +62,7 @@ systemctl show fnos-rescue-web.service \
 grep -q '^User=root$' "$WORK/service-properties.txt"
 grep -q '^NoNewPrivileges=yes$' "$WORK/service-properties.txt"
 grep -q '^PrivateTmp=yes$' "$WORK/service-properties.txt"
-grep -q '^ProtectSystem=strict$' "$WORK/service-properties.txt"
+grep -q '^ProtectSystem=full$' "$WORK/service-properties.txt"
 "$APP/bin/fnos-rescue-helper" fnos-detect >/dev/null
 if "$APP/bin/fnos-rescue-helper" job-run >/dev/null 2>&1; then
   echo "ERROR: root helper accepted job-run" >&2

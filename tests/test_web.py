@@ -1,4 +1,5 @@
 import io
+import base64
 import json
 import tempfile
 import unittest
@@ -6,7 +7,9 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fnos_rescue.devices import DeviceFacts
-from fnos_rescue.web import RescueWebHandler, _human_size, _read_inventory, case_directory, list_devices
+from fnos_rescue.cases import RecoveryCase
+from fnos_rescue.errors import RescueError
+from fnos_rescue.web import RescueWebHandler, _human_size, _read_inventory, case_directory, list_devices, load_access_token, serve, validate_web_job
 
 
 class WebTests(unittest.TestCase):
@@ -29,7 +32,7 @@ class WebTests(unittest.TestCase):
         handler = object.__new__(RescueWebHandler)
         handler.path = "/api/protect"
         handler.headers = {"Content-Length": "36", "Host": "localhost:8790", "X-FNOS-Token": "test-token"}
-        handler.server = Mock(csrf_token="test-token")
+        handler.server = Mock(access_token="test-token")
         handler.rfile = io.BytesIO(b'{"device":"/tmp/a","serial":"secret"}')
         handler._json = Mock()
         with patch("fnos_rescue.web.protect_source") as protect:
@@ -47,7 +50,7 @@ class WebTests(unittest.TestCase):
         payload = b'{"case_id":"case-111111111111","kind":"shell","parameters":{}}'
         handler.headers = {"Content-Length": str(len(payload)), "Host": "localhost:8790"}
         handler.headers["X-FNOS-Token"] = "test-token"
-        handler.server = Mock(csrf_token="test-token")
+        handler.server = Mock(access_token="test-token")
         handler.rfile = io.BytesIO(payload)
         handler._json = Mock()
         handler.do_POST()
@@ -57,11 +60,48 @@ class WebTests(unittest.TestCase):
         handler = object.__new__(RescueWebHandler)
         handler.path = "/api/protect"
         handler.headers = {"Content-Length": "2", "Host": "localhost:8790"}
-        handler.server = Mock(csrf_token="required-token")
+        handler.server = Mock(access_token="required-token")
         handler.rfile = io.BytesIO(b"{}")
         handler._json = Mock()
         handler.do_POST()
-        self.assertEqual(handler._json.call_args.args[0], 403)
+        self.assertEqual(handler._json.call_args.args[0], 401)
+
+    def test_get_rejects_missing_access_token(self):
+        handler = object.__new__(RescueWebHandler)
+        handler.path = "/api/cases"
+        handler.headers = {"Host": "localhost:8790"}
+        handler.server = Mock(access_token="required-token")
+        handler._json = Mock()
+        handler.do_GET()
+        self.assertEqual(handler._json.call_args.args[0], 401)
+
+    def test_access_token_file_is_private_and_nontrivial(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            token = Path(temporary) / "web.token"
+            token.write_text("x" * 32)
+            token.chmod(0o600)
+            self.assertEqual(load_access_token(token), "x" * 32)
+            token.chmod(0o644)
+            with self.assertRaises(RescueError):
+                load_access_token(token)
+
+    def test_server_refuses_non_loopback_listener(self):
+        with self.assertRaises(RescueError):
+            serve("0.0.0.0", 8790)
+
+    def test_job_device_must_match_case_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = RecoveryCase.create(DeviceFacts(
+                path="/dev/sda", name="sda", size_bytes=1000, read_only=True,
+                device_type="disk", filesystem="btrfs", model="test", serial="SERIAL",
+                uuid="1" * 32, mountpoints=(),
+            ))
+            case_path = root / case.case_id
+            case.save(case_path)
+            with patch("fnos_rescue.web.assert_case_source", side_effect=ValueError("wrong source")):
+                with self.assertRaises(ValueError):
+                    validate_web_job(case_path, "btrfs-probe", {"device": "/dev/sdb"})
 
     def test_web_rejects_arbitrary_recovery_tool_path(self):
         handler = object.__new__(RescueWebHandler)
@@ -72,7 +112,7 @@ class WebTests(unittest.TestCase):
             "parameters": {"device": "/dev/sda", "fsid": "1" * 32, "scanner": "/tmp/tool"},
         }).encode()
         handler.headers = {"Content-Length": str(len(payload)), "Host": "localhost:8790", "X-FNOS-Token": "test-token"}
-        handler.server = Mock(csrf_token="test-token")
+        handler.server = Mock(access_token="test-token")
         handler.rfile = io.BytesIO(payload)
         handler._json = Mock()
         handler.do_POST()
@@ -86,6 +126,35 @@ class WebTests(unittest.TestCase):
             items = _read_inventory(path)
         self.assertEqual([item["path"] for item in items], ["Photos/a.jpg"])
         self.assertEqual(items[0]["inode"], "9")
+
+    def test_inventory_decodes_base64_paths_without_tsv_ambiguity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "inventory.tsv"
+            special = b"Photos/tab\tline\nraw-\xff.jpg"
+            encoded = base64.b64encode(special).decode("ascii")
+            escape = base64.b64encode(b"../escape").decode("ascii")
+            path.write_text(
+                "rootid\tobjectid\tsize\tpath_b64\n"
+                f"257\t9\t4\t{encoded}\n"
+                f"257\t10\t4\t{escape}\n"
+            )
+            items = _read_inventory(path)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["path_b64"], encoded)
+        self.assertEqual(items[0]["path"], "Photos/tab\\x09line\\x0araw-\\xff.jpg")
+
+    def test_inventory_exposes_only_regular_files_for_extraction(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "inventory.tsv"
+            file_path = base64.b64encode(b"Photos/a.jpg").decode()
+            directory = base64.b64encode(b"Photos").decode()
+            path.write_text(
+                "rootid\ttype\tsize\tobjectid\tpath_b64\n"
+                f"257\t2\t0\t256\t{directory}\n"
+                f"257\t1\t4\t9\t{file_path}\n"
+            )
+            items = _read_inventory(path)
+        self.assertEqual([item["path"] for item in items], ["Photos/a.jpg"])
 
 
 if __name__ == "__main__":

@@ -47,6 +47,9 @@ jobs:
       - if: matrix.python-version == '3.11'
         run: ./scripts/build-recovery-tools.sh
       - if: matrix.python-version == '3.11'
+        name: Test disposable read-only Btrfs source to separate destination
+        run: sudo ./scripts/test-disposable-btrfs-e2e.sh
+      - if: matrix.python-version == '3.11'
         run: ./scripts/build-deb.sh
       - if: matrix.python-version == '3.11'
         run: |

@@ -12,6 +12,7 @@ import struct
 import uuid
 
 from crc32c_compat import crc32c
+from overlay_safety import require_connected_case_overlay
 
 
 NODE_SIZE = 16 * 1024
@@ -25,6 +26,8 @@ CHUNK_ITEM_KEY = 228
 DEV_ITEM_KEY = 216
 CHUNK_TREE_OWNER = 3
 HEADER_FLAG_WRITTEN = 1
+CHUNK_CACHE_MAX_RECORDS = 1_048_576
+CHUNK_CACHE_MAX_STRIPES = 1_024
 
 
 def checksum(block: bytearray) -> None:
@@ -60,15 +63,26 @@ def make_header(
 def read_cache(path: str) -> list[dict]:
     chunks: list[dict] = []
     with open(path, "rb") as handle:
-        magic, version, count = struct.unpack("=8sII", handle.read(16))
+        header = handle.read(16)
+        if len(header) != 16:
+            raise RuntimeError("short chunk cache header")
+        magic, version, count = struct.unpack("=8sII", header)
         if magic != b"BTRCHNK1" or version != 1:
             raise RuntimeError("unsupported chunk cache")
+        if count == 0 or count > CHUNK_CACHE_MAX_RECORDS:
+            raise RuntimeError("unsafe chunk cache record count")
         for _ in range(count):
             raw = handle.read(88)
             if len(raw) != 88:
                 raise RuntimeError("short chunk cache record")
             kind = struct.unpack_from("=I", raw, 0)[0]
             num_stripes, sub_stripes = struct.unpack_from("=HH", raw, 4)
+            if kind not in (1, 2, 3, 4):
+                raise RuntimeError("invalid chunk cache list kind")
+            if not 0 < num_stripes <= CHUNK_CACHE_MAX_STRIPES:
+                raise RuntimeError("unsafe chunk cache stripe count")
+            if sub_stripes > num_stripes:
+                raise RuntimeError("invalid chunk cache sub-stripe count")
             generation, objectid = struct.unpack_from("=QQ", raw, 8)
             key_type = raw[24]
             offset, owner, length, flags, stripe_len = struct.unpack_from(
@@ -78,8 +92,12 @@ def read_cache(path: str) -> list[dict]:
             stripes = []
             for _stripe in range(num_stripes):
                 stripe_raw = handle.read(32)
+                if len(stripe_raw) != 32:
+                    raise RuntimeError("short chunk cache stripe")
                 devid, physical = struct.unpack_from("=QQ", stripe_raw, 0)
                 stripes.append((devid, physical, stripe_raw[16:32]))
+            if length == 0:
+                raise RuntimeError("zero-length chunk cache record")
             if kind not in (1, 2):
                 continue
             chunks.append(
@@ -100,6 +118,8 @@ def read_cache(path: str) -> list[dict]:
                     stripes=stripes,
                 )
             )
+        if handle.read(1):
+            raise RuntimeError("trailing bytes in chunk cache")
     return chunks
 
 
@@ -195,7 +215,10 @@ def main() -> int:
     )
     parser.add_argument("--chunk-uuid", required=True)
     parser.add_argument("--confirm-overlay", action="store_true", required=True)
+    parser.add_argument("--overlay-state", required=True)
     args = parser.parse_args()
+
+    require_connected_case_overlay(args.device, args.overlay_state)
 
     chunks = read_cache(args.cache)
     if not chunks:

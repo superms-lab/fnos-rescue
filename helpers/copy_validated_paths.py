@@ -10,6 +10,10 @@ import os
 import time
 from pathlib import Path
 
+from fnos_rescue.destinations import assert_destination_ready, inspect_destination
+from fnos_rescue.safety import assert_destination_not_source, assert_source_graph_read_only
+from fnos_rescue.verify import sha256_file, verify_file
+
 
 def safe_path(root: str, relative_path: str) -> Path:
     relative = Path(relative_path)
@@ -36,11 +40,18 @@ def main() -> int:
     parser.add_argument("source_root")
     parser.add_argument("destination_root")
     parser.add_argument("output_log")
+    parser.add_argument("--source-device", required=True, help="original physical source device")
     parser.add_argument("--size-column", default="原始大小(bytes)")
     parser.add_argument("--path-column", default="相对路径")
+    parser.add_argument("--sha256-column", default="SHA256")
     parser.add_argument("--buffer-mib", type=int, default=4)
     parser.add_argument("--progress-every", type=int, default=10)
     args = parser.parse_args()
+
+    assert_source_graph_read_only(args.source_device)
+    destination_facts = inspect_destination(args.destination_root)
+    assert_destination_not_source(args.source_device, destination_facts.existing_ancestor)
+    assert_destination_ready(destination_facts)
 
     candidates = []
     with open(args.manifest, encoding="utf-8-sig", newline="") as handle:
@@ -49,8 +60,8 @@ def main() -> int:
                 size = int(row[args.size_column])
             except (KeyError, TypeError, ValueError):
                 continue
-            if size > 0:
-                candidates.append((size, row[args.path_column]))
+            if size >= 0:
+                candidates.append((size, row[args.path_column], row.get(args.sha256_column, "").strip() or None))
 
     started = time.monotonic()
     copied_bytes = 0
@@ -58,7 +69,7 @@ def main() -> int:
     failures = []
     buffer_size = args.buffer_mib * 1024 * 1024
 
-    for index, (expected_size, relative_path) in enumerate(candidates, 1):
+    for index, (expected_size, relative_path, expected_sha256) in enumerate(candidates, 1):
         try:
             source = str(safe_path(args.source_root, relative_path))
             destination = str(safe_path(args.destination_root, relative_path))
@@ -85,12 +96,34 @@ def main() -> int:
                     dst.write(block)
                     digest.update(block)
                     copied += len(block)
+                dst.flush()
+                os.fsync(dst.fileno())
             if copied != expected_size:
                 raise OSError(f"short read {copied}/{expected_size}")
+            source_digest = digest.hexdigest()
+            temporary_digest = sha256_file(Path(temporary))
+            if temporary_digest != source_digest:
+                raise OSError("temporary destination reread hash mismatch")
             os.replace(temporary, destination)
+            directory_fd = os.open(os.path.dirname(destination), os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+            destination_digest = sha256_file(Path(destination))
+            if destination_digest != source_digest:
+                raise OSError("final destination reread hash mismatch")
+            verification = verify_file(
+                destination,
+                expected_size=expected_size,
+                expected_sha256=expected_sha256,
+                expected_empty=expected_size == 0,
+            )
+            if verification.validation_ok is not True:
+                raise OSError(verification.validation_error or "destination content is unvalidated")
             copied_bytes += copied
             successes.append(
-                (expected_size, digest.hexdigest(), magic.hex(), relative_path)
+                (expected_size, destination_digest, magic.hex(), relative_path)
             )
         except Exception as error:  # Recovery must continue after per-file errors.
             try:
@@ -124,7 +157,7 @@ def main() -> int:
         f"done ok={len(successes)} failed={len(failures)} "
         f"copied={copied_bytes} elapsed={elapsed:.3f}s speed={speed:.2f}MiB/s"
     )
-    return 0 if successes else 2
+    return 0 if candidates and len(successes) == len(candidates) and not failures else 2
 
 
 if __name__ == "__main__":
