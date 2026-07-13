@@ -1,4 +1,4 @@
-# FNOS Rescue v0.1.2 安全加固跟踪
+# FNOS Rescue v0.1.2–v0.1.3 安全加固跟踪
 
 本文件是审核后四阶段修复的唯一进度基线。任何阶段只有在实现、负向测试、完整测试和
 构建全部通过后才能标记完成。唯一原盘不得用于阶段验收。
@@ -49,10 +49,26 @@ Web 生产构建、依赖审计、安全扫描、Live profile、Python/Shell 语
 
 ## 第四阶段：发布与实机验收
 
-状态：进行中（本地完整回归通过，GitHub Linux 实机验收中）
+状态：已完成（2026-07-13）
 
 - 完整单元、集成、安全扫描、依赖审计、包生命周期与 BIOS/UEFI Live 验收。
 - 在可丢弃 Linux 虚拟盘和可清理 fnOS 主机完成端到端验证，不接触旧恢复源盘。
 - 启用 GitHub main 分支保护、CodeQL 和 Dependabot 安全更新。
 - 重新构建并校验 Wheel、sdist、DEB、fnOS 包、SBOM、SHA256SUMS 和 Live ISO。
-- 发布 `v0.1.2` prerelease；保留 `v0.1.1` 的 Alpha 警告。
+- 发布 `v0.1.3` prerelease，取代已发布但随后被深层 CodeQL 数据流继续发现问题的
+  `v0.1.2`；旧版本保留 Alpha/已取代语义，不覆盖不可变标签。
+
+最终验收证据：99 项 Python 测试在本地及 GitHub Python 3.11/3.12/3.13 通过；一次性
+Btrfs 源镜像以 kernel 只读模式复制到独立 ext4 目标，复制后原镜像逐字节 SHA-256 不变；
+DEB 与 fnOS 包安装、回滚、卸载生命周期和干净发布预检通过；Web 生产构建、npm 审计
+（0 漏洞）和项目安全扫描通过。`main` 强制 7 项状态检查、管理员保护、线性历史、会话
+解决，禁止强推和删除；CodeQL Python/JavaScript 主分支开放告警为 0，主分支记录的
+#4–#12 全部以代码修复关闭，没有忽略或豁免。`v0.1.3` 注释标签指向受保护主分支提交；
+prerelease 含 8 个
+已上传资产（Wheel、sdist、DEB、fnOS 包、CycloneDX SBOM、SHA256SUMS、Live ISO 及其
+校验文件）。Live ISO 结构检查与 QEMU BIOS/UEFI 两种启动验证通过；ISO 大小
+1,037,041,664 字节，SHA-256 为
+`bede855ffb98844c1adf076979fd1025600167735fae39c5fdbad1c9076262df`，与 GitHub 资产摘要
+和独立 `.iso.sha256` 文件一致。
+
+发布地址：<https://github.com/superms-lab/fnos-rescue/releases/tag/v0.1.3>
