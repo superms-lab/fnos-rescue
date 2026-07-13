@@ -17,6 +17,7 @@ NETWORK_FILESYSTEMS = {
     "cifs": "smb",
     "smb3": "smb",
 }
+DEFAULT_DESTINATION_ROOTS = (Path("/mnt"), Path("/media"), Path("/run/media"), Path("/fs"))
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,25 @@ class DestinationFacts:
 
 def classify_filesystem(filesystem: str) -> str:
     return NETWORK_FILESYSTEMS.get(filesystem.lower(), "local")
+
+
+def _approved_destination(path: str | Path, approved_roots: tuple[Path, ...] | None) -> Path:
+    raw = os.fspath(path)
+    if not raw or "\0" in raw:
+        raise SafetyError("destination path is empty or contains a null byte")
+    candidate = os.path.realpath(os.path.abspath(os.path.expanduser(raw)))
+    roots = approved_roots
+    if roots is None:
+        configured = os.environ.get("FNOS_RESCUE_DESTINATION_ROOTS", "")
+        roots = tuple(Path(value) for value in configured.split(":") if value.startswith("/"))
+        if not roots:
+            roots = DEFAULT_DESTINATION_ROOTS
+    for root in roots:
+        normalized_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+        prefix = normalized_root.rstrip(os.sep) + os.sep
+        if candidate == normalized_root or candidate.startswith(prefix):
+            return Path(candidate)
+    raise SafetyError("destination is outside the administrator-approved recovery roots")
 
 
 def _existing_ancestor(path: Path) -> Path:
@@ -63,11 +83,10 @@ def parse_findmnt(document: dict[str, Any]) -> tuple[str, str, str, tuple[str, .
     )
 
 
-def inspect_destination(path: str | Path) -> DestinationFacts:
-    raw = os.fspath(path)
-    if not raw or "\0" in raw:
-        raise SafetyError("destination path is empty or contains a null byte")
-    destination = Path(os.path.realpath(os.path.abspath(os.path.expanduser(raw))))
+def inspect_destination(
+    path: str | Path, *, approved_roots: tuple[Path, ...] | None = None
+) -> DestinationFacts:
+    destination = _approved_destination(path, approved_roots)
     ancestor = _existing_ancestor(destination)
     if platform.system() != "Linux":
         raise SafetyError("destination mount inspection requires Linux")

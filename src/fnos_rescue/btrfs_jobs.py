@@ -260,6 +260,7 @@ def execute_btrfs_root_scan(store: JobStore, job: RecoveryJob) -> RecoveryJob:
         timeout=float(job.parameters.get("timeout", 86400)),
         stdout_path=log,
         stderr_path=errors,
+        trusted_executable=argv[0],
     )
     log.chmod(0o600)
     errors.chmod(0o600)
@@ -323,6 +324,7 @@ def execute_btrfs_chunk_cache(store: JobStore, job: RecoveryJob) -> RecoveryJob:
         env={"BTRFS_CHUNK_CACHE_SAVE": str(cache), "BTRFS_CHUNK_CACHE_ONLY": "1"},
         stdout_path=stdout_log,
         stderr_path=stderr_log,
+        trusted_executable=tool,
     )
     if not cache.is_file() or cache.stat().st_size == 0:
         raise RescueError("private btrfs tool did not create a non-empty chunk cache")
@@ -390,6 +392,7 @@ def execute_btrfs_list(store: JobStore, job: RecoveryJob) -> RecoveryJob:
         },
         stdout_path=stdout_log,
         stderr_path=stderr_log,
+        trusted_executable=tool,
     )
     if not inventory.is_file() or inventory.stat().st_size == 0:
         raise RescueError("private btrfs tool did not create a file inventory")
@@ -441,6 +444,7 @@ def execute_btrfs_extract_inode(store: JobStore, job: RecoveryJob) -> RecoveryJo
         env=environment,
         stdout_path=stdout_log,
         stderr_path=stderr_log,
+        trusted_executable=tool,
     )
     if not output.is_file():
         raise RescueError("private btrfs tool did not create an extracted file")
